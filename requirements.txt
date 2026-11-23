@@ -1,9 +1,7 @@
 PyYAML
 librosa
-matplotlib
 ml-collections
 numpy>=2.0.0
 soundfile
 torch>=2.6.0
-torchaudio
 tqdm

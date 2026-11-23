@@ -10,6 +10,9 @@ python -m pip install -e ".[mel_band_roformer]"
 
 先安装与你的 GPU / CPU 匹配的 PyTorch。如果使用其他人声模型，安装对应
 `pyproject.toml` 中的模型 extra，例如 `.[bs_roformer]`。
+BandIt 和官方 RoFormer 的 extra 会自动安装 `torchaudio`；其他模型不会强制安装。
+启用 `--draw_spectro` 时再安装 `.[spectrogram]`；模型配置设置 `use_pope: true`
+时再额外安装 `.[pope]`。
 
 ## 2. 下载人声模型权重和配置
 

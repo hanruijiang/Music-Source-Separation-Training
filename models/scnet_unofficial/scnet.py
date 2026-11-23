@@ -9,7 +9,6 @@ from typing import List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchaudio
 
 from models.scnet_unofficial.modules import DualPathRNN, SDBlock, SUBlock
 from models.scnet_unofficial.utils import compute_sd_layer_shapes, compute_gcr

@@ -109,3 +109,14 @@ def test_vit_mel_roformer_all_exports_are_defined():
 def test_no_unregistered_duplicate_vit_roformer():
     # Model factory imports models.VitMelRoFormer.bsroformer, not transformer1d.
     assert not (ROOT / "models/VitMelRoFormer/transformer1d.py").exists()
+
+
+def test_optional_inference_dependencies_are_not_eager():
+    project = (ROOT / "pyproject.toml").read_text()
+    common = project.split("[project.optional-dependencies]")[0]
+    assert '"torchaudio"' not in common
+    assert '"matplotlib"' not in common
+    assert 'spectrogram = ["matplotlib"]' in project
+    assert 'pope = ["PoPE-pytorch"]' in project
+    assert 'bandit = ["spafe", "torchaudio"]' in project
+    assert 'import torchaudio' not in (ROOT / "models/scnet_unofficial/scnet.py").read_text()

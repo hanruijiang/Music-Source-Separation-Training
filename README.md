@@ -19,6 +19,8 @@ python -m pip install -e ".[mel_band_roformer]"
 
 Choose the model-family extra corresponding to your pretrained model.
 For example, `.[bs_roformer]`, `.[mdx23c]` or `.[segm_models]`.
+For `--draw_spectro`, install the optional `spectrogram` extra as well.
+If a RoFormer preset uses `use_pope: true`, add the `pope` extra.
 Some architectures need GPU/Linux-specific dependencies.
 
 ## Command-line inference

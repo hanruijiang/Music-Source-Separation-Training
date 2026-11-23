@@ -3,7 +3,6 @@ import os
 from typing import Dict, Tuple
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 
 def normalize_audio(audio: np.ndarray) -> Tuple[np.ndarray, Dict[str, float]]:
@@ -68,6 +67,7 @@ def draw_spectrogram(waveform: np.ndarray, sample_rate: int, length: float, outp
     """
 
     import librosa.display
+    import matplotlib.pyplot as plt
 
     # Cut only required part of spectorgram
     x = waveform[:int(length * sample_rate), :]
