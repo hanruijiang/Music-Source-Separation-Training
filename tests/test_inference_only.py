@@ -104,3 +104,8 @@ def test_vit_mel_roformer_all_exports_are_defined():
                    and any(isinstance(target, ast.Name) and target.id == "__all__"
                            for target in node.targets))
     assert "BandSplit" not in ast.literal_eval(exports.value)
+
+
+def test_no_unregistered_duplicate_vit_roformer():
+    # Model factory imports models.VitMelRoFormer.bsroformer, not transformer1d.
+    assert not (ROOT / "models/VitMelRoFormer/transformer1d.py").exists()
