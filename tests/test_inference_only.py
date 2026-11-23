@@ -87,3 +87,20 @@ def test_bandit_core_does_not_import_training_frameworks():
     source = (ROOT / "models/bandit/core/__init__.py").read_text()
     for obsolete in ("pytorch_lightning", "torchmetrics", "asteroid", "core.data"):
         assert obsolete not in source
+
+
+def test_scnet_unofficial_keeps_only_rnn_preset():
+    rnn = (ROOT / "models/scnet_unofficial/modules/dualpath_rnn.py").read_text()
+    config = (ROOT / "configs/config_vocals_scnet_unofficial.yaml").read_text()
+    assert "mamba_ssm" not in rnn
+    assert "MambaModule" not in rnn
+    assert "use_mamba" not in config
+
+
+def test_vit_mel_roformer_all_exports_are_defined():
+    source = ast.parse((ROOT / "models/VitMelRoFormer/__init__.py").read_text())
+    exports = next(node for node in source.body
+                   if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Name) and target.id == "__all__"
+                           for target in node.targets))
+    assert "BandSplit" not in ast.literal_eval(exports.value)

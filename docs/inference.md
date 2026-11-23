@@ -60,4 +60,5 @@ for file in written:
 - 推理所需的模型结构和 checkpoint 参数命名仍保留；训练框架的入口和
   独立训练测试脚本已移除。
 - 此精简分支不提供 LoRA adapter 推理/微调，只接受完整权重。
+- `scnet_unofficial` 保留预置的 RNN 推理结构，未保留未使用的 Mamba 变体。
 - PyTorch checkpoint 可能含有 pickle，请仅加载可信来源的文件。
