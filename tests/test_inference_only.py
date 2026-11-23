@@ -96,7 +96,6 @@ def test_no_training_or_gui():
 
 
 def test_repository_links_point_to_this_fork():
-    import re
     repository = "https://github.com/hanruijiang/Music-Source-Separation-Training"
     readme = (ROOT / "README.md").read_text()
     docs = (ROOT / "docs/inference.md").read_text()
