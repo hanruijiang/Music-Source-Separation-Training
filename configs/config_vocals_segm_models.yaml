@@ -3,12 +3,10 @@
 audio:
   chunk_size: 261632
   dim_f: 4096
-  dim_t: 512
   hop_length: 512
   n_fft: 8192
   num_channels: 2
   sample_rate: 44100
-  min_mean_abs: 0.001
 
 model:
   encoder_name: tu-maxvit_large_tf_512 # look here for possibilities: https://github.com/qubvel/segmentation_models.pytorch#encoders-
@@ -26,5 +24,4 @@ training:
 
 inference:
   batch_size: 1
-  dim_t: 512
   num_overlap: 4

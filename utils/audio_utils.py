@@ -74,7 +74,6 @@ def draw_spectrogram(waveform: np.ndarray, sample_rate: int, length: float, outp
     X = librosa.stft(x.mean(axis=-1))  # perform short-term fourier transform on mono signal
     Xdb = librosa.amplitude_to_db(np.abs(X), ref=np.max)  # convert an amplitude spectrogram to dB-scaled spectrogram.
     fig, ax = plt.subplots()
-    # plt.figure(figsize=(30, 10))  # initialize the fig size
     img = librosa.display.specshow(
         Xdb,
         cmap='plasma',
@@ -86,4 +85,5 @@ def draw_spectrogram(waveform: np.ndarray, sample_rate: int, length: float, outp
     ax.set(title='File: ' + os.path.basename(output_file))
     fig.colorbar(img, ax=ax, format="%+2.f dB")
     if output_file is not None:
-        plt.savefig(output_file)
+        fig.savefig(output_file)
+    plt.close(fig)

@@ -1,5 +1,4 @@
 """Inference-only demixing, augmentation and checkpoint utilities."""
-import argparse
 import os
 import shutil
 from typing import Dict, List, Union
@@ -197,7 +196,7 @@ def demix(
                         # keep batch shape constant for compiled model (avoid recompilation)
                         arr = nn.functional.pad(arr, (0, 0, 0, 0, 0, batch_size - arr.shape[0]))
                     x = model(arr).to(acc_device, torch.float32)
-                    if x.ndim == 3 and model_type in ("bs_roformer_official", "mel_roformer_official"):
+                    if x.ndim == 3:
                         x = x.unsqueeze(1)
 
                     for j, (start, seg_len) in enumerate(batch_locations):
@@ -373,15 +372,12 @@ def strip_compile_prefix(state_dict: dict) -> dict:
 
 
 
-def load_start_checkpoint(args: argparse.Namespace, model: torch.nn.Module,
-                          old_model, type_: str = 'inference') -> None:
+def load_start_checkpoint(model: torch.nn.Module, old_model) -> None:
     """Load a **full** inference checkpoint, strictly, without LoRA/fine-tuning.
 
     Accepts raw state dicts as well as wrapped checkpoint dicts. Only load
     checkpoints from trusted sources (torch.load may unpickle Python objects).
     """
-    if type_ != 'inference':
-        raise ValueError('This build supports inference only')
     state = old_model
     for key in ('state', 'state_dict', 'model_state_dict'):
         if isinstance(state, dict) and key in state:

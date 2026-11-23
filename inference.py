@@ -3,7 +3,6 @@ __author__ = 'Roman Solovyev (ZFTurbo): https://github.com/ZFTurbo/'
 
 import time
 import librosa
-import sys
 import os
 import glob
 import torch
@@ -11,10 +10,6 @@ import soundfile as sf
 import numpy as np
 from tqdm.auto import tqdm
 import torch.nn as nn
-
-# Using the embedded version of Python can also correctly import the utils module.
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
 
 from utils.audio_utils import normalize_audio, denormalize_audio, draw_spectrogram
 from utils.settings import get_model_from_config, parse_args_inference
@@ -212,12 +207,12 @@ def proc_folder(dict_args):
         args.model_type = config.training.model_type
     if args.start_check_point:
         checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
-        load_start_checkpoint(args, model, checkpoint, type_='inference')
+        load_start_checkpoint(model, checkpoint)
 
     print("Instruments: {}".format(config.training.instruments))
 
     # in case multiple CUDA GPUs are used and --device_ids arg is passed
-    if isinstance(args.device_ids, list) and len(args.device_ids) > 1 and not args.force_cpu:
+    if torch.device(device).type == 'cuda' and isinstance(args.device_ids, list) and len(args.device_ids) > 1:
         model = nn.DataParallel(model, device_ids=args.device_ids)
 
     model = model.to(device)
@@ -239,7 +234,7 @@ def separate_folder(*, model_type: str, config_path: str,
     """Run vocal separation from Python and return written audio paths.
 
     Example: separate_folder(model_type='bs_roformer',
-        config_path='configs/config_vocals_bs_roformer.yaml',
+        config_path='configs/viperx/model_bs_roformer_ep_317_sdr_12.9755.yaml',
         checkpoint_path='weights.ckpt', input_folder='audio', output_folder='out')
     """
     params = dict(model_type=model_type, config_path=str(config_path),
