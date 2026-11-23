@@ -25,7 +25,7 @@ Repository = "https://github.com/hanruijiang/Music-Source-Separation-Training"
 Upstream = "https://github.com/ZFTurbo/Music-Source-Separation-Training"
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest", "tomli; python_version < '3.11'"]
 spectrogram = ["matplotlib"]
 mdx23c = []
 segm_models = ["segmentation-models-pytorch", "timm"]
