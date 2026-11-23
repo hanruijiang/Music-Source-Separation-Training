@@ -71,7 +71,7 @@ def get_decoder(config, c):
             pass
         decoder = smp.Unet(
             encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
+            encoder_weights=None,
             in_channels=c,
             classes=c,
             **decoder_options,
@@ -83,7 +83,7 @@ def get_decoder(config, c):
             pass
         decoder = smp.FPN(
             encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
+            encoder_weights=None,
             in_channels=c,
             classes=c,
             **decoder_options,
@@ -95,7 +95,7 @@ def get_decoder(config, c):
             pass
         decoder = smp.UnetPlusPlus(
             encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
+            encoder_weights=None,
             in_channels=c,
             classes=c,
             **decoder_options,
@@ -107,7 +107,7 @@ def get_decoder(config, c):
             pass
         decoder = smp.MAnet(
             encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
+            encoder_weights=None,
             in_channels=c,
             classes=c,
             **decoder_options,
@@ -119,7 +119,7 @@ def get_decoder(config, c):
             pass
         decoder = smp.Linknet(
             encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
+            encoder_weights=None,
             in_channels=c,
             classes=c,
             **decoder_options,
@@ -131,7 +131,7 @@ def get_decoder(config, c):
             pass
         decoder = smp.PSPNet(
             encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
+            encoder_weights=None,
             in_channels=c,
             classes=c,
             **decoder_options,
@@ -143,7 +143,7 @@ def get_decoder(config, c):
             pass
         decoder = smp.PSPNet(
             encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
+            encoder_weights=None,
             in_channels=c,
             classes=c,
             **decoder_options,
@@ -155,7 +155,7 @@ def get_decoder(config, c):
             pass
         decoder = smp.PAN(
             encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
+            encoder_weights=None,
             in_channels=c,
             classes=c,
             **decoder_options,
@@ -167,7 +167,7 @@ def get_decoder(config, c):
             pass
         decoder = smp.DeepLabV3(
             encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
+            encoder_weights=None,
             in_channels=c,
             classes=c,
             **decoder_options,
@@ -179,7 +179,7 @@ def get_decoder(config, c):
             pass
         decoder = smp.DeepLabV3Plus(
             encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
+            encoder_weights=None,
             in_channels=c,
             classes=c,
             **decoder_options,

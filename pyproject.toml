@@ -1,6 +1,6 @@
 [project]
 name = "music-source-separation-training"
-description = "Vocal-only checkpoint inference from the CLI or Python. No training, fine-tuning, or GUI."
+description = "Vocal-only inference with exactly five selected pretrained model presets."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -21,30 +21,17 @@ dynamic = ["version"]
 vocal-separate = "inference:main"
 
 [project.urls]
-Repository = "https://github.com/ZFTurbo/Music-Source-Separation-Training"
+Repository = "https://github.com/hanruijiang/Music-Source-Separation-Training"
+Upstream = "https://github.com/ZFTurbo/Music-Source-Separation-Training"
 
 [project.optional-dependencies]
 test = ["pytest"]
 spectrogram = ["matplotlib"]
-pope = ["PoPE-pytorch"]
-# Only model-family dependencies; no train / validation / LoRA / GUI extras.
-bs_roformer = ["beartype", "einops", "packaging", "rotary-embedding-torch"]
-mel_band_roformer = ["beartype", "einops", "packaging", "rotary-embedding-torch"]
-bs_conformer = ["beartype", "einops", "packaging", "rotary-embedding-torch"]
-mel_band_conformer = ["beartype", "einops", "packaging", "rotary-embedding-torch"]
 mdx23c = []
 segm_models = ["segmentation-models-pytorch", "timm"]
-torchseg = ["torchseg", "timm"]
-bandit = ["spafe", "torchaudio"]
-scnet_unofficial = ["beartype", "einops"]
-scnet = []
-dttnet = []
-dbs_bsrnn = ["einops", "rotary-embedding-torch"]
-dbs_bs_roformer = ["einops", "rotary-embedding-torch"]
-dbs_mel_roformer = ["einops", "rotary-embedding-torch"]
-mel_roformer_official = ["einops", "rotary-embedding-torch", "torchaudio"]
-bs_roformer_official = ["einops", "rotary-embedding-torch", "torchaudio"]
-vit_mel_roformer = ["einops", "rotary-embedding-torch"]
+bs_roformer = ["beartype", "einops", "packaging", "rotary-embedding-torch"]
+mel_band_roformer = ["beartype", "einops", "packaging", "rotary-embedding-torch"]
+bs_polarformer = ["beartype", "einops", "packaging", "rotary-embedding-torch", "PoPE-pytorch"]
 
 [build-system]
 requires = ["setuptools>=80", "setuptools-scm>=8"]

@@ -9,7 +9,7 @@ import yaml
 from torch import nn
 from ml_collections import ConfigDict
 
-VOCAL_MODEL_TYPES = frozenset(('mdx23c', 'segm_models', 'torchseg', 'mel_band_roformer', 'mel_band_conformer', 'bs_roformer', 'bs_conformer', 'bandit', 'scnet_unofficial', 'scnet', 'dttnet', 'dbs_bsrnn', 'dbs_bs_roformer', 'dbs_mel_roformer', 'mel_roformer_official', 'bs_roformer_official', 'vit_mel_roformer'))
+VOCAL_MODEL_TYPES = frozenset(("mdx23c", "segm_models", "bs_roformer", "mel_band_roformer", "bs_polarformer"))
 
 
 def validate_vocal_config(config) -> None:
@@ -83,57 +83,20 @@ def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module,
     model_type = config.training.get('model_type', model_type)
     if model_type not in VOCAL_MODEL_TYPES:
         raise ValueError(f'Unsupported vocal model architecture: {model_type}')
-    if model_type == 'mdx23c':
+    if model_type == "mdx23c":
         from models.mdx23c_tfc_tdf_v3 import TFC_TDF_net
         model = TFC_TDF_net(config)
-    elif model_type == 'segm_models':
+    elif model_type == "segm_models":
         from models.segm_models import Segm_Models_Net
         model = Segm_Models_Net(config)
-    elif model_type == 'torchseg':
-        from models.torchseg_models import Torchseg_Net
-        model = Torchseg_Net(config)
-    elif model_type == 'mel_band_roformer':
+    elif model_type in ("bs_roformer", "bs_polarformer"):
+        from models.bs_roformer import BSRoformer
+        if model_type == "bs_polarformer" and not config.model.get("use_pope", False):
+            raise ValueError("BS PolarFormer requires model.use_pope: true")
+        model = BSRoformer(**dict(config.model))
+    elif model_type == "mel_band_roformer":
         from models.bs_roformer import MelBandRoformer
         model = MelBandRoformer(**dict(config.model))
-    elif model_type == 'mel_band_conformer':
-        from models.bs_roformer import MelBandConformer
-        model = MelBandConformer(**dict(config.model))
-    elif model_type == 'bs_roformer':
-        from models.bs_roformer import BSRoformer
-        model = BSRoformer(**dict(config.model))
-    elif model_type == 'bs_conformer':
-        from models.bs_roformer import BSConformer
-        model = BSConformer(**dict(config.model))
-    elif model_type == 'bandit':
-        from models.bandit.core.model import MultiMaskMultiSourceBandSplitRNNSimple
-        model = MultiMaskMultiSourceBandSplitRNNSimple(**config.model)
-    elif model_type == 'scnet_unofficial':
-        from models.scnet_unofficial import SCNet
-        model = SCNet(**config.model)
-    elif model_type == 'scnet':
-        from models.scnet import SCNet
-        model = SCNet(**config.model)
-    elif model_type == 'dttnet':
-        from models.DTTNet import DPTDFNet
-        model = DPTDFNet(config)
-    elif model_type == 'dbs_bsrnn':
-        from models.dynamic_band_splitting import DBSBSRNN
-        model = DBSBSRNN(**dict(config.model))
-    elif model_type == 'dbs_bs_roformer':
-        from models.dynamic_band_splitting import DBSBSRoformer
-        model = DBSBSRoformer(**dict(config.model))
-    elif model_type == 'dbs_mel_roformer':
-        from models.dynamic_band_splitting import DBSMelRoformer
-        model = DBSMelRoformer(**dict(config.model))
-    elif model_type == 'mel_roformer_official':
-        from models.BSRoFormer_official import MelRoFormer
-        model = MelRoFormer(**dict(config.model))
-    elif model_type == 'bs_roformer_official':
-        from models.BSRoFormer_official import BSRoFormer
-        model = BSRoFormer(**dict(config.model))
-    elif model_type == 'vit_mel_roformer':
-        from models.VitMelRoFormer import VitMelRoformer
-        model = VitMelRoformer(**dict(config.model))
     else:
-        raise ValueError(f'Unsupported vocal model architecture: {model_type}')
+        raise ValueError(f"Unsupported vocal model architecture: {model_type}")
     return model, config

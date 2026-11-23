@@ -1,67 +1,51 @@
-# Vocal inference (CLI and Python only)
+# 五个预训练人声模型的推理指南
 
-这个版本只支持人声分离推理，不提供训练、微调、GUI 或验证命令。
+仅保留命令行 `python inference.py` / `vocal-separate` 和 Python
+API `inference.separate_folder`，不包含训练或 GUI。
 
-## 1. 安装
+| 模型 | `--model_type` | 配置 |
+|---|---|---|
+| MDX23C | `mdx23c` | `configs/config_vocals_mdx23c.yaml` |
+| Segm Models (VitLarge23) | `segm_models` | `configs/config_vocals_segm_models.yaml` |
+| BS Roformer (viperx) | `bs_roformer` | `configs/viperx/model_bs_roformer_ep_317_sdr_12.9755.yaml` |
+| MelBand Roformer (KimberleyJensen) | `mel_band_roformer` | `configs/KimberleyJensen/config_vocals_mel_band_roformer_kj.yaml` |
+| BS PolarFormer (PoPE) | `bs_polarformer` | `configs/model_bs_polarformer_float16.yaml` |
 
-```bash
-python -m pip install -e ".[mel_band_roformer]"
-```
+安装时选择与预训练权重对应的 extra，如
+`python -m pip install -e ".[bs_polarformer,test]"`。
+`bs_polarformer` 是启用 `model.use_pope: true` 的 BS Roformer，
+专用 extra 会安装 `PoPE-pytorch`。绘制频谱图需额外安装
+`.[spectrogram]`。
 
-先安装与你的 GPU / CPU 匹配的 PyTorch。如果使用其他人声模型，安装对应
-`pyproject.toml` 中的模型 extra，例如 `.[bs_roformer]`。
-BandIt 和官方 RoFormer 的 extra 会自动安装 `torchaudio`；其他模型不会强制安装。
-启用 `--draw_spectro` 时再安装 `.[spectrogram]`；模型配置设置 `use_pope: true`
-时再额外安装 `.[pope]`。
-
-## 2. 下载人声模型权重和配置
-
-从 [Vocal pretrained models](pretrained_models.md) 中选择匹配的
-checkpoint 和配置。模型类型（`--model_type`）必须与配置匹配。
-仓库内的 `configs/config_vocals_*.yaml` 和两个 viperx vocal 预设均保留。
-
-## 3. 命令行
+## 命令行示例
 
 ```bash
-python inference.py \
+vocal-separate \
   --model_type bs_roformer \
-  --config_path configs/config_vocals_bs_roformer.yaml \
-  --start_check_point weights/vocals.ckpt \
+  --config_path configs/viperx/model_bs_roformer_ep_317_sdr_12.9755.yaml \
+  --start_check_point /path/to/model_bs_roformer_ep_317_sdr_12.9755.ckpt \
   --input_folder input_audio \
   --store_dir outputs \
   --extract_instrumental
 ```
 
-安装后也可使用 `vocal-separate` 替换 `python inference.py`。
-支持 CPU (`--force_cpu`)、TTA (`--use_tta`)、BigShifts (`--bigshifts`)、
-音频格式 (`--flac_file --pcm_type PCM_24`)、输出命名和单 GPU 编译。
-通过 `--help` 查看参数。
+支持 `--force_cpu`、`--use_tta`、`--bigshifts`、
+`--flac_file`、`--pcm_type`、`--draw_spectro` 和 `--compile`。
 
-## 4. Python 代码
+## Python API
 
 ```python
 from inference import separate_folder
 
 written = separate_folder(
-    model_type="bs_roformer",
-    config_path="configs/config_vocals_bs_roformer.yaml",
-    checkpoint_path="weights/vocals.ckpt",
-    input_folder="input_audio",
-    output_folder="outputs",
-    extract_instrumental=True,
+    model_type="bs_polarformer",
+    config_path="configs/model_bs_polarformer_float16.yaml",
+    checkpoint_path="/path/to/model_bs_polarformer_float16.ckpt",
+    input_folder="audio",
+    output_folder="results",
 )
-for file in written:
-    print(file)
 ```
 
-也可调用兼容入口 `inference.proc_folder({...})`。
-
-## 模型兼容性
-
-- `vocals` 是必须的输出/目标音轨，`other` 和 `instrumental` 仅可作为伴奏。
-- `vocals` + `other` 两路输出仍是 Vocal 模型，不会被误删。
-- 推理所需的模型结构和 checkpoint 参数命名仍保留；训练框架的入口和
-  独立训练测试脚本已移除。
-- 此精简分支不提供 LoRA adapter 推理/微调，只接受完整权重。
-- `scnet_unofficial` 保留预置的 RNN 推理结构，未保留未使用的 Mamba 变体。
-- PyTorch checkpoint 可能含有 pickle，请仅加载可信来源的文件。
+本地 YAML 仅保留推理必需的音频、模型、输出音轨、AMP 和推理参数。
+请勿随意修改 `model` 参数，以免预训练权重不兼容。
+只使用可信来源的完整 checkpoint；尚需进行真实音频和权重的端到端测试。

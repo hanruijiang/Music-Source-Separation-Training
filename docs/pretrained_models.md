@@ -1,16 +1,16 @@
-# Pretrained vocal separation models
+# Five selected vocal models
 
-仅列出 Vocal models；other / instrumental 是对应的伴奏音轨。
-训练代码已移除，表内模型和权重仅用于推理。
+只保留以下 5 个**具体版本**。SDR 为上游 Multisong Dataset 参考结果，
+非本分支新测得的分数。
 
-### Vocal models
+| 模型 | `model_type` | Vocal SDR | 本地配置 | 原始 checkpoint |
+|---|---|---|---|---|
+| MDX23C | `mdx23c` | 10.17 | [YAML](../configs/config_vocals_mdx23c.yaml) | [Weights](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.0/model_vocals_mdx23c_sdr_10.17.ckpt) |
+| Segm Models (VitLarge23) | `segm_models` | 9.77 | [YAML](../configs/config_vocals_segm_models.yaml) | [Weights](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.0/model_vocals_segm_models_sdr_9.77.ckpt) |
+| BS Roformer (viperx) | `bs_roformer` | 10.87 | [YAML](../configs/viperx/model_bs_roformer_ep_317_sdr_12.9755.yaml) | [Weights](https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/model_bs_roformer_ep_317_sdr_12.9755.ckpt) |
+| MelBand Roformer (KimberleyJensen) | `mel_band_roformer` | 10.98 | [YAML](../configs/KimberleyJensen/config_vocals_mel_band_roformer_kj.yaml) | [Weights](https://huggingface.co/KimberleyJSN/melbandroformer/resolve/main/MelBandRoformer.ckpt) |
+| BS PolarFormer (PoPE) | `bs_polarformer` | 11.00 | [YAML](../configs/model_bs_polarformer_float16.yaml) | [Weights](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.20/model_bs_polarformer_float16.ckpt) |
 
-|                                    Model Type                                     | Instruments |   Metrics (SDR)   |                                                                          Config                                                                           | Checkpoint |
-|:---------------------------------------------------------------------------------:|:-------------:|:-----------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------------:|:-----:|
-|                                      MDX23C                                       | vocals / other | SDR vocals: 10.17 |                 [Config](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.0/config_vocals_mdx23c.yaml)                  | [Weights](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.0/model_vocals_mdx23c_sdr_10.17.ckpt) |
-|                             Segm Models (VitLarge23)                              | vocals / other | SDR vocals: 9.77  |               [Config](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.0/config_vocals_segm_models.yaml)               | [Weights](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.0/model_vocals_segm_models_sdr_9.77.ckpt) |
-|         BS Roformer ([viperx](https://github.com/playdasegunda) edition)          | vocals / other | SDR vocals: 10.87 |    [Config](https://raw.githubusercontent.com/ZFTurbo/Music-Source-Separation-Training/main/configs/viperx/model_bs_roformer_ep_317_sdr_12.9755.yaml)     | [Weights](https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/model_bs_roformer_ep_317_sdr_12.9755.ckpt) |
-|       MelBand Roformer ([viperx](https://github.com/playdasegunda) edition)       | vocals / other | SDR vocals: 9.67  | [Config](https://raw.githubusercontent.com/ZFTurbo/Music-Source-Separation-Training/main/configs/viperx/model_mel_band_roformer_ep_3005_sdr_11.4360.yaml) | [Weights](https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt) |
-| MelBand Roformer ([KimberleyJensen](https://github.com/KimberleyJensen/) edition) | vocals / other | SDR vocals: 10.98 | [Config](https://raw.githubusercontent.com/ZFTurbo/Music-Source-Separation-Training/main/configs/KimberleyJensen/config_vocals_mel_band_roformer_kj.yaml) | [Weights](https://huggingface.co/KimberleyJSN/melbandroformer/resolve/main/MelBandRoformer.ckpt) |
-
-**Note**: Metrics measured on [Multisong Dataset](https://mvsep.com/en/quality_checker).
+BS PolarFormer: BS Roformer + PoPE，
+[原始配置](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.20/model_bs_polarformer_float16.yaml)。
+需安装 `.[bs_polarformer]`。

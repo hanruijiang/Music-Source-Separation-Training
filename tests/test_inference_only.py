@@ -1,122 +1,92 @@
-"""Regression checks for the inference-only vocal fork."""
+"""Contract tests for the five retained pretrained vocal models."""
 from pathlib import Path
 import ast
 import subprocess
 import sys
+import tomllib
 
 import pytest
-import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+MODEL_CONFIGS = {
+    "mdx23c": "configs/config_vocals_mdx23c.yaml",
+    "segm_models": "configs/config_vocals_segm_models.yaml",
+    "bs_roformer": "configs/viperx/model_bs_roformer_ep_317_sdr_12.9755.yaml",
+    "mel_band_roformer": "configs/KimberleyJensen/config_vocals_mel_band_roformer_kj.yaml",
+    "bs_polarformer": "configs/model_bs_polarformer_float16.yaml",
+}
+MODEL_FILES = {
+    "mdx23c_tfc_tdf_v3.py", "segm_models.py",
+    "bs_roformer/__init__.py", "bs_roformer/attend.py",
+    "bs_roformer/bs_roformer.py", "bs_roformer/mel_band_roformer.py",
+}
 
 
-def test_no_training_gui_or_finetuning_entrypoints():
-    for file in ("train.py", "train_ddp.py", "train_accelerate.py",
-                 "valid.py", "valid_ddp.py", "ensemble.py", "utils/dataset.py",
-                 "utils/losses.py", "utils/auto_batch.py"):
-        assert not (ROOT / file).exists(), file
-    assert not (ROOT / "gui").exists()
-    assert not (ROOT / "scripts").exists()
+def test_only_five_model_types():
+    from utils.settings import VOCAL_MODEL_TYPES
+    assert VOCAL_MODEL_TYPES == frozenset(MODEL_CONFIGS)
 
 
-def test_inference_cli_exposes_no_training_or_lora_flags():
+def test_only_five_checkpoint_presets_and_needed_modules():
+    presets = {str(p.relative_to(ROOT)) for p in (ROOT / "configs").rglob("*.yaml")}
+    model_files = {str(p.relative_to(ROOT / "models"))
+                   for p in (ROOT / "models").rglob("*.py")}
+    assert presets == set(MODEL_CONFIGS.values())
+    assert model_files == MODEL_FILES
+
+
+@pytest.mark.parametrize("model_type", list(MODEL_CONFIGS))
+def test_pretrained_configs_have_only_inference_metadata(model_type):
+    from utils.settings import load_config, validate_vocal_config
+    config = load_config(str(ROOT / MODEL_CONFIGS[model_type]))
+    validate_vocal_config(config)
+    assert set(config) == {"audio", "model", "training", "inference"}
+    assert set(config.training) == {"instruments", "target_instrument", "use_amp"}
+    assert "vocals" in config.training.instruments
+    assert config.inference.num_overlap > 0
+
+
+def test_polarformer_is_bs_roformer_with_pope():
+    from utils.settings import load_config
+    config = load_config(str(ROOT / MODEL_CONFIGS["bs_polarformer"]))
+    model = config.model
+    assert model.use_pope is True
+    assert model.dim == 256 and model.depth == 12
+    assert model.stft_hop_length == 512
+    assert model.num_stems == 1
+    assert sum(model.freqs_per_bands) == model.dim_freqs_in == 1025
+    src = (ROOT / "utils/settings.py").read_text()
+    assert '"bs_roformer", "bs_polarformer"' in src
+    assert "BS PolarFormer requires model.use_pope: true" in src
+
+
+def test_only_required_model_extras():
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    extras = set(project["project"]["optional-dependencies"])
+    assert extras == {*MODEL_CONFIGS, "spectrogram", "test"}
+    assert "PoPE-pytorch" in project["project"]["optional-dependencies"]["bs_polarformer"]
+    assert "PoPE-pytorch" not in project["project"]["optional-dependencies"]["bs_roformer"]
+
+
+def test_no_online_imagenet_download_in_segm():
+    src = (ROOT / "models/segm_models.py").read_text()
+    assert 'encoder_weights="imagenet"' not in src
+    assert "encoder_weights=None" in src
+
+
+def test_cli_and_api():
     from utils.settings import parse_args_inference
     with pytest.raises(ValueError, match="Unsupported inference options"):
         parse_args_inference({"train_lora_loralib": True})
-    with pytest.raises(ValueError, match="Unsupported inference options"):
-        parse_args_inference({"lora_checkpoint_loralib": "adapter.ckpt"})
+    completed = subprocess.run([sys.executable, str(ROOT / "inference.py"), "--help"],
+                               capture_output=True, text=True, check=True)
+    for model_type in MODEL_CONFIGS:
+        assert model_type in completed.stdout
+    tree = ast.parse((ROOT / "inference.py").read_text())
+    func_names = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
+    assert {"proc_folder", "separate_folder", "main"} <= func_names
 
 
-def test_vocal_presets_only():
-    from utils.settings import validate_vocal_config
-    from ml_collections import ConfigDict
-    presets = list((ROOT / "configs").rglob("*.yaml"))
-    assert presets
-    for path in presets:
-        config = ConfigDict(yaml.load(path.read_text(), Loader=yaml.FullLoader))
-        validate_vocal_config(config)
-    for instruments in (["drums"], ["vocals", "bass"]):
-        with pytest.raises(ValueError):
-            validate_vocal_config(ConfigDict({"training": {"instruments": instruments}}))
-
-
-def test_cli_help_and_python_api():
-    result = subprocess.run([sys.executable, str(ROOT / "inference.py"), "--help"],
-                            capture_output=True, text=True, check=True)
-    assert "--model_type" in result.stdout
-    assert "--config_path" in result.stdout
-    assert "--start_check_point" in result.stdout
-    assert "--train" not in result.stdout
-    assert "--lora" not in result.stdout
-    source = ast.parse((ROOT / "inference.py").read_text())
-    assert {"proc_folder", "separate_folder", "main"}.issubset(
-        {n.name for n in source.body if isinstance(n, ast.FunctionDef)})
-
-
-def test_removed_model_families_and_configs():
-    from utils.settings import VOCAL_MODEL_TYPES
-
-    removed = {"htdemucs", "swin_upernet", "bs_mamba2"}
-    assert not removed.intersection(VOCAL_MODEL_TYPES)
-    for path in (
-        "models/demucs4ht.py",
-        "models/upernet_swin_transformers.py",
-        "models/bs_mamba2_code/attend_mamba.py",
-        "models/bs_mamba2_code/bs_mamba2.py",
-        "configs/config_vocals_htdemucs.yaml",
-        "configs/config_vocals_swin_upernet.yaml",
-        "configs/config_bs_mamba2_vocals.yaml",
-        "configs/config_vocals_bs_mamba2.yaml",
-    ):
-        assert not (ROOT / path).exists(), path
-
-    settings = (ROOT / "utils/settings.py").read_text()
-    demix = (ROOT / "utils/model_utils.py").read_text()
-    project = (ROOT / "pyproject.toml").read_text()
-    assert not any(name in settings for name in removed)
-    assert "htdemucs" not in demix
-    assert not any(f"{name} = " in project for name in removed)
-    assert "omegaconf" not in project
-
-
-def test_bandit_core_does_not_import_training_frameworks():
-    import importlib
-
-    core = importlib.import_module("models.bandit.core")
-    assert not hasattr(core, "LightningSystem")
-    source = (ROOT / "models/bandit/core/__init__.py").read_text()
-    for obsolete in ("pytorch_lightning", "torchmetrics", "asteroid", "core.data"):
-        assert obsolete not in source
-
-
-def test_scnet_unofficial_keeps_only_rnn_preset():
-    rnn = (ROOT / "models/scnet_unofficial/modules/dualpath_rnn.py").read_text()
-    config = (ROOT / "configs/config_vocals_scnet_unofficial.yaml").read_text()
-    assert "mamba_ssm" not in rnn
-    assert "MambaModule" not in rnn
-    assert "use_mamba" not in config
-
-
-def test_vit_mel_roformer_all_exports_are_defined():
-    source = ast.parse((ROOT / "models/VitMelRoFormer/__init__.py").read_text())
-    exports = next(node for node in source.body
-                   if isinstance(node, ast.Assign)
-                   and any(isinstance(target, ast.Name) and target.id == "__all__"
-                           for target in node.targets))
-    assert "BandSplit" not in ast.literal_eval(exports.value)
-
-
-def test_no_unregistered_duplicate_vit_roformer():
-    # Model factory imports models.VitMelRoFormer.bsroformer, not transformer1d.
-    assert not (ROOT / "models/VitMelRoFormer/transformer1d.py").exists()
-
-
-def test_optional_inference_dependencies_are_not_eager():
-    project = (ROOT / "pyproject.toml").read_text()
-    common = project.split("[project.optional-dependencies]")[0]
-    assert '"torchaudio"' not in common
-    assert '"matplotlib"' not in common
-    assert 'spectrogram = ["matplotlib"]' in project
-    assert 'pope = ["PoPE-pytorch"]' in project
-    assert 'bandit = ["spafe", "torchaudio"]' in project
-    assert 'import torchaudio' not in (ROOT / "models/scnet_unofficial/scnet.py").read_text()
+def test_no_training_or_gui():
+    for path in ("train.py", "valid.py", "ensemble.py", "train_ddp.py", "gui", "scripts"):
+        assert not (ROOT / path).exists()
