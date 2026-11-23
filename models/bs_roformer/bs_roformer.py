@@ -1,26 +1,17 @@
 from functools import partial
 
 import torch
-from torch import nn, einsum, tensor, Tensor
+from torch import nn
 from torch.nn import Module, ModuleList
 import torch.nn.functional as F
 
 from models.bs_roformer.attend import Attend
 
-from typing import Tuple, Optional, List, Callable
+from typing import Tuple, Optional, Callable
 
 from rotary_embedding_torch import RotaryEmbedding
 
 from einops import rearrange, pack, unpack
-from einops.layers.torch import Rearrange
-
-try:
-    from PoPE_pytorch import PoPE, flash_attn_with_pope
-    _HAS_POPE = True
-except Exception:
-    PoPE = None
-    flash_attn_with_pope = None
-    _HAS_POPE = False
 
 # helper functions
 
@@ -94,6 +85,9 @@ class Attention(Module):
 
         self.rotary_embed = rotary_embed
         self.pope_embed = pope_embed
+        if pope_embed is not None:
+            from PoPE_pytorch import flash_attn_with_pope
+            self._pope_attention = flash_attn_with_pope
         assert not (self.rotary_embed is not None and self.pope_embed is not None), \
             "cannot have both rotary and pope embeddings"
 
@@ -115,8 +109,7 @@ class Attention(Module):
         q, k, v = rearrange(self.to_qkv(x), 'b n (qkv h d) -> qkv b h n d', qkv=3, h=self.heads)
 
         if exists(self.pope_embed):
-            assert _HAS_POPE, "PoPE requested but PoPE_pytorch is not installed"
-            out = flash_attn_with_pope(
+            out = self._pope_attention(
                 q, k, v,
                 pos_emb=self.pope_embed(q.shape[-2]),
                 softmax_scale=self.scale
@@ -251,7 +244,6 @@ class MaskEstimator(Module):
         dim_hidden = dim * mlp_expansion_factor
 
         for dim_in in dim_inputs:
-            net = []
 
             mlp = nn.Sequential(
                 MLP(dim, dim_in * 2, dim_hidden=dim_hidden, depth=depth),
@@ -335,7 +327,12 @@ class BSRoformer(Module):
         )
 
         if use_pope:
-            assert _HAS_POPE, "PoPE requested but PoPE_pytorch is not installed"
+            try:
+                from PoPE_pytorch import PoPE
+            except ModuleNotFoundError as exc:
+                if exc.name != 'PoPE_pytorch':
+                    raise
+                raise ImportError('BS PolarFormer requires PoPE-pytorch; install .[bs_polarformer]') from exc
             time_pope_embed = PoPE(dim=dim_head, heads=heads)
             freq_pope_embed = PoPE(dim=dim_head, heads=heads)
             time_rotary_embed = None
@@ -377,6 +374,8 @@ class BSRoformer(Module):
         self.stft_window_fn = partial(default(stft_window_fn, torch.hann_window), stft_win_length)
 
         freqs = torch.stft(torch.randn(1, 4096), **self.stft_kwargs, window=torch.ones(stft_win_length), return_complex=True).shape[1]
+        if freqs != dim_freqs_in:
+            raise ValueError(f'Expected {dim_freqs_in} STFT frequency bins, got {freqs}')
 
         assert len(freqs_per_bands) > 1
         assert sum(

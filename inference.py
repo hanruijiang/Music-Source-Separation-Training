@@ -105,7 +105,6 @@ def run_folder(
             model,
             mix,
             device,
-            model_type=args.model_type,
             pbar=detailed_pbar,
             bigshifts=args.bigshifts
         )
@@ -118,7 +117,6 @@ def run_folder(
                 mix,
                 waveforms_orig,
                 device,
-                args.model_type,
                 bigshifts=args.bigshifts,
                 pbar=detailed_pbar
             )

@@ -1,18 +1,17 @@
 from functools import partial
 
 import torch
-from torch import nn, einsum, tensor, Tensor
+from torch import nn
 from torch.nn import Module, ModuleList
 import torch.nn.functional as F
 
 from models.bs_roformer.attend import Attend
 
-from typing import Tuple, Optional, List, Callable
+from typing import Tuple, Optional, Callable
 
 from rotary_embedding_torch import RotaryEmbedding
 
 from einops import rearrange, pack, unpack, reduce, repeat
-from einops.layers.torch import Rearrange
 
 from librosa import filters
 
@@ -32,16 +31,6 @@ def pack_one(t, pattern):
 
 def unpack_one(t, ps, pattern):
     return unpack(t, ps, pattern)[0]
-
-
-def pad_at_dim(t, pad, dim=-1, value=0.):
-    dims_from_right = (- dim - 1) if dim < 0 else (t.ndim - dim - 1)
-    zeros = ((0, 0) * dims_from_right)
-    return F.pad(t, (*zeros, *pad), value=value)
-
-
-def l2norm(t):
-    return F.normalize(t, dim=-1, p=2)
 
 
 # norm
@@ -242,7 +231,6 @@ class MaskEstimator(Module):
         dim_hidden = dim * mlp_expansion_factor
 
         for dim_in in dim_inputs:
-            net = []
 
             mlp = nn.Sequential(
                 MLP(dim, dim_in * 2, dim_hidden=dim_hidden, depth=depth),
@@ -300,6 +288,7 @@ class MelBandRoformer(Module):
         self.stereo = stereo
         self.audio_channels = 2 if stereo else 1
         self.num_stems = num_stems
+        self.match_input_audio_length = match_input_audio_length
 
         self.layers = ModuleList([])
 
@@ -343,6 +332,8 @@ class MelBandRoformer(Module):
         )
 
         freqs = torch.stft(torch.randn(1, 4096), **self.stft_kwargs, window=torch.ones(stft_n_fft), return_complex=True).shape[1]
+        if freqs != dim_freqs_in:
+            raise ValueError(f'Expected {dim_freqs_in} STFT frequency bins, got {freqs}')
 
         # create mel filter bank
         # with librosa.filters.mel as in section 2 of paper

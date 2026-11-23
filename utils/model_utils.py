@@ -68,7 +68,6 @@ def bigshifts_wrapper(
     model: torch.nn.Module,
     mix: torch.Tensor,
     device: torch.device,
-    model_type: str,
     pbar: bool = False,
     bigshifts: int = 1
 ) -> Dict[str, np.ndarray]:
@@ -91,7 +90,7 @@ def bigshifts_wrapper(
 
     for shift in shifts_iterator:
         shifted_mix = np.concatenate((mix[:, -shift:], mix[:, :-shift]), axis=-1)
-        sources = demix(config, model, shifted_mix, device, model_type, pbar)
+        sources = demix(config, model, shifted_mix, device, pbar=pbar)
 
         unshifted = {
             k: np.concatenate((v[..., shift:], v[..., :shift]), axis=-1)
@@ -107,7 +106,6 @@ def demix(
     model: torch.nn.Module,
     mix: torch.Tensor,
     device: torch.device,
-    model_type: str,
     pbar: bool = False
 ) -> Dict[str, np.ndarray]:
     """
@@ -122,7 +120,6 @@ def demix(
         model (torch.nn.Module): Source separation model for inference.
         mix (torch.Tensor): Input audio tensor of shape (channels, time).
         device (torch.device): Device on which to run inference (CPU or CUDA).
-        model_type (str): Architecture identifier for output-shape handling.
         pbar (bool, optional): If True, show a progress bar during chunk
             processing. Defaults to False.
 
@@ -157,7 +154,7 @@ def demix(
 
     use_amp = getattr(config.training, 'use_amp', True)
 
-    with torch.cuda.amp.autocast(enabled=(use_amp and torch.device(device).type == 'cuda')):
+    with torch.amp.autocast(device_type='cuda', enabled=(use_amp and torch.device(device).type == 'cuda')):
         # Use no_grad because some models populate mutable lazy inference caches.
         with torch.no_grad():
             # Initialize result and counter tensors (counter is the same for all instruments and channels)
@@ -237,7 +234,6 @@ def apply_tta(
     mix: torch.Tensor,
     waveforms_orig: dict[str, np.ndarray],
     device: torch.device,
-    model_type: str,
     bigshifts: int = 1,
     pbar: bool = False
 ) -> dict[str, np.ndarray]:
@@ -255,7 +251,6 @@ def apply_tta(
         waveforms_orig (Dict[str, torch.Tensor]): Dictionary of separated
             sources before augmentation.
         device (torch.device): Computation device (CPU or CUDA).
-        model_type (str): Model type identifier used for demixing.
 
     Returns:
         Dict[str, torch.Tensor]: Dictionary of separated sources after applying TTA.
@@ -271,7 +266,6 @@ def apply_tta(
             model,
             augmented_mix,
             device,
-            model_type=model_type,
             bigshifts=bigshifts,
             pbar=pbar
         )

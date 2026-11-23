@@ -15,7 +15,7 @@ dependencies = [
   "torch>=2.6.0",
   "tqdm"
 ]
-dynamic = ["version"]
+version = "0.1.0"
 
 [project.scripts]
 vocal-separate = "inference:main"
@@ -34,7 +34,7 @@ mel_band_roformer = ["einops", "rotary-embedding-torch"]
 bs_polarformer = ["einops", "rotary-embedding-torch", "PoPE-pytorch"]
 
 [build-system]
-requires = ["setuptools>=80", "setuptools-scm>=8"]
+requires = ["setuptools>=80"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]

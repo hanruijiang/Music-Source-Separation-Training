@@ -1,5 +1,6 @@
 from functools import wraps
 from collections import namedtuple
+from inspect import signature
 
 import os
 import torch
@@ -11,17 +12,16 @@ import torch.nn.functional as F
 
 FlashAttentionConfig = namedtuple('FlashAttentionConfig', ['enable_flash', 'enable_math', 'enable_mem_efficient'])
 
-try:
-    from torch.nn.attention import sdpa_kernel, SDPBackend
-    INFERENCE_SDPA_BACKENDS = [
-        SDPBackend.CUDNN_ATTENTION,
-        SDPBackend.FLASH_ATTENTION,
-        SDPBackend.EFFICIENT_ATTENTION,
-        SDPBackend.MATH,
-    ]
-    _HAS_SDPA_KERNEL = True
-except ImportError:
-    _HAS_SDPA_KERNEL = False
+from torch.nn.attention import sdpa_kernel, SDPBackend
+
+INFERENCE_SDPA_BACKENDS = [
+    SDPBackend.CUDNN_ATTENTION,
+    SDPBackend.FLASH_ATTENTION,
+    SDPBackend.EFFICIENT_ATTENTION,
+    SDPBackend.MATH,
+]
+# Older supported PyTorch releases may not expose explicit backend ordering.
+_SDPA_HAS_PRIORITY = 'set_priority' in signature(sdpa_kernel).parameters
 
 # helpers
 
@@ -83,7 +83,7 @@ class Attend(nn.Module):
             self.cuda_config = FlashAttentionConfig(False, True, True)
 
     def flash_attn(self, q, k, v):
-        _, heads, q_len, _, k_len, is_cuda, device = *q.shape, k.shape[-2], q.is_cuda, q.device
+        is_cuda = q.is_cuda
 
         if exists(self.scale):
             default_scale = q.shape[-1] ** -0.5
@@ -91,17 +91,27 @@ class Attend(nn.Module):
 
         # inference on cuda: prefer cuDNN attention (available on Windows builds, ~1.9x faster than
         # mem efficient kernel for long sequences on Ampere/Blackwell), fall back to the others if unsupported
-        if is_cuda and not self.training and _HAS_SDPA_KERNEL:
-            with sdpa_kernel(INFERENCE_SDPA_BACKENDS, set_priority=True):
+        if is_cuda and not self.training:
+            if _SDPA_HAS_PRIORITY:
+                with sdpa_kernel(INFERENCE_SDPA_BACKENDS, set_priority=True):
+                    return F.scaled_dot_product_attention(q, k, v)
+            with sdpa_kernel(INFERENCE_SDPA_BACKENDS):
                 return F.scaled_dot_product_attention(q, k, v)
 
         # Check if there is a compatible device for flash attention
 
         config = self.cuda_config if is_cuda else self.cpu_config
 
-        # pytorch 2.0 flash attn: q, k, v, mask, dropout, softmax_scale
+        # Preserve the legacy context's enabled backends, including cuDNN.
+        backends = [SDPBackend.CUDNN_ATTENTION]
+        if config.enable_flash:
+            backends.append(SDPBackend.FLASH_ATTENTION)
+        if config.enable_math:
+            backends.append(SDPBackend.MATH)
+        if config.enable_mem_efficient:
+            backends.append(SDPBackend.EFFICIENT_ATTENTION)
 
-        with torch.backends.cuda.sdp_kernel(**config._asdict()):
+        with sdpa_kernel(backends):
             out = F.scaled_dot_product_attention(
                 q, k, v,
                 dropout_p = self.dropout if self.training else 0.
@@ -117,8 +127,6 @@ class Attend(nn.Module):
         n, i, j - sequence length (base sequence length, source, target)
         d - feature dimension
         """
-
-        q_len, k_len, device = q.shape[-2], k.shape[-2], q.device
 
         scale = default(self.scale, q.shape[-1] ** -0.5)
 
