@@ -51,3 +51,39 @@ def test_cli_help_and_python_api():
     source = ast.parse((ROOT / "inference.py").read_text())
     assert {"proc_folder", "separate_folder", "main"}.issubset(
         {n.name for n in source.body if isinstance(n, ast.FunctionDef)})
+
+
+def test_removed_model_families_and_configs():
+    from utils.settings import VOCAL_MODEL_TYPES
+
+    removed = {"htdemucs", "swin_upernet", "bs_mamba2"}
+    assert not removed.intersection(VOCAL_MODEL_TYPES)
+    for path in (
+        "models/demucs4ht.py",
+        "models/upernet_swin_transformers.py",
+        "models/bs_mamba2_code/attend_mamba.py",
+        "models/bs_mamba2_code/bs_mamba2.py",
+        "configs/config_vocals_htdemucs.yaml",
+        "configs/config_vocals_swin_upernet.yaml",
+        "configs/config_bs_mamba2_vocals.yaml",
+        "configs/config_vocals_bs_mamba2.yaml",
+    ):
+        assert not (ROOT / path).exists(), path
+
+    settings = (ROOT / "utils/settings.py").read_text()
+    demix = (ROOT / "utils/model_utils.py").read_text()
+    project = (ROOT / "pyproject.toml").read_text()
+    assert not any(name in settings for name in removed)
+    assert "htdemucs" not in demix
+    assert not any(f"{name} = " in project for name in removed)
+    assert "omegaconf" not in project
+
+
+def test_bandit_core_does_not_import_training_frameworks():
+    import importlib
+
+    core = importlib.import_module("models.bandit.core")
+    assert not hasattr(core, "LightningSystem")
+    source = (ROOT / "models/bandit/core/__init__.py").read_text()
+    for obsolete in ("pytorch_lightning", "torchmetrics", "asteroid", "core.data"):
+        assert obsolete not in source

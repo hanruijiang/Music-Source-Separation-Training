@@ -560,24 +560,3 @@ class EquivalentRectangularBandsplitSpecification(PerceptualBandsplitSpecificati
             f_max: float = None
     ) -> None:
         super().__init__(fbank_fn=erb_filterbank, nfft=nfft, fs=fs, n_bands=n_bands, f_min=f_min, f_max=f_max)
-
-if __name__ == "__main__":
-    import pandas as pd
-
-    band_defs = []
-
-    for bands in [VocalBandsplitSpecification]:  
-        band_name = bands.__name__.replace("BandsplitSpecification", "")
-
-        mbs = bands(nfft=2048, fs=44100).get_band_specs()
-
-        for i, (f_min, f_max) in enumerate(mbs):
-            band_defs.append({
-                "band": band_name,
-                "band_index": i,
-                "f_min": f_min,
-                "f_max": f_max
-            })
-
-    df = pd.DataFrame(band_defs)
-    df.to_csv("vox7bands.csv", index=False)

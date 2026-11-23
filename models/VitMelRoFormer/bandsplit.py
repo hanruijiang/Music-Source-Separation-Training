@@ -231,24 +231,3 @@ class BandLinear(nn.Module):
 
         # Sum along the input channels axis
         return torch.einsum('btki,kio->btko', x, self.weight) + self.bias  # (b, t, k, o)
-
-
-if __name__ == '__main__':
-
-    seed = 1234
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    x = torch.randn(8, 4, 201, 1025)  # (b, c, t, f)
-
-    bandsplit = BandSplit(
-        sr=44100, 
-        n_fft=2048, 
-        n_bands=64,
-        in_channels=4, 
-        out_channels=64
-    )
-
-    y = bandsplit.transform(x)  # (b, d, t, k)
-    x_hat = bandsplit.inverse_transform(y)  # (b, c, t, f)
-    print(x - x_hat)

@@ -2,16 +2,14 @@
 from __future__ import annotations
 
 import argparse
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple
 
 import soundfile as sf
-import torch
 import yaml
 from torch import nn
-from omegaconf import OmegaConf
 from ml_collections import ConfigDict
 
-VOCAL_MODEL_TYPES = frozenset(('mdx23c', 'htdemucs', 'segm_models', 'torchseg', 'mel_band_roformer', 'mel_band_conformer', 'bs_roformer', 'bs_conformer', 'bs_mamba2', 'swin_upernet', 'bandit', 'scnet_unofficial', 'scnet', 'dttnet', 'dbs_bsrnn', 'dbs_bs_roformer', 'dbs_mel_roformer', 'mel_roformer_official', 'bs_roformer_official', 'vit_mel_roformer'))
+VOCAL_MODEL_TYPES = frozenset(('mdx23c', 'segm_models', 'torchseg', 'mel_band_roformer', 'mel_band_conformer', 'bs_roformer', 'bs_conformer', 'bandit', 'scnet_unofficial', 'scnet', 'dttnet', 'dbs_bsrnn', 'dbs_bs_roformer', 'dbs_mel_roformer', 'mel_roformer_official', 'bs_roformer_official', 'vit_mel_roformer'))
 
 
 def validate_vocal_config(config) -> None:
@@ -73,16 +71,14 @@ def parse_args_inference(dict_args: Dict | None = None) -> argparse.Namespace:
     return args
 
 
-def load_config(model_type: str, config_path: str) -> Union[ConfigDict, OmegaConf]:
-    if model_type == 'htdemucs':
-        return OmegaConf.load(config_path)
+def load_config(config_path: str) -> ConfigDict:
     with open(config_path, encoding='utf-8') as f:
         # Trusted YAML presets may contain !!python/tuple used by upstream.
         return ConfigDict(yaml.load(f, Loader=yaml.FullLoader))
 
 
-def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module, Union[ConfigDict, OmegaConf]]:
-    config = load_config(model_type, config_path)
+def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module, ConfigDict]:
+    config = load_config(config_path)
     validate_vocal_config(config)
     model_type = config.training.get('model_type', model_type)
     if model_type not in VOCAL_MODEL_TYPES:
@@ -90,9 +86,6 @@ def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module,
     if model_type == 'mdx23c':
         from models.mdx23c_tfc_tdf_v3 import TFC_TDF_net
         model = TFC_TDF_net(config)
-    elif model_type == 'htdemucs':
-        from models.demucs4ht import get_model
-        model = get_model(config)
     elif model_type == 'segm_models':
         from models.segm_models import Segm_Models_Net
         model = Segm_Models_Net(config)
@@ -111,12 +104,6 @@ def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module,
     elif model_type == 'bs_conformer':
         from models.bs_roformer import BSConformer
         model = BSConformer(**dict(config.model))
-    elif model_type == 'bs_mamba2':
-        from models.bs_mamba2_code.bs_mamba2 import BSMamba2Model
-        model = BSMamba2Model(**dict(config.model))
-    elif model_type == 'swin_upernet':
-        from models.upernet_swin_transformers import Swin_UperNet_Model
-        model = Swin_UperNet_Model(config)
     elif model_type == 'bandit':
         from models.bandit.core.model import MultiMaskMultiSourceBandSplitRNNSimple
         model = MultiMaskMultiSourceBandSplitRNNSimple(**config.model)

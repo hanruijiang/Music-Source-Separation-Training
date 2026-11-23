@@ -57,7 +57,7 @@ for file in written:
 
 - `vocals` 是必须的输出/目标音轨，`other` 和 `instrumental` 仅可作为伴奏。
 - `vocals` + `other` 两路输出仍是 Vocal 模型，不会被误删。
-- 部分模型架构包含内部 loss 或依赖训练框架的基类，保留这些是为推理时
-  构建网络和加载参数；此分支不提供训练调用入口。
+- 推理所需的模型结构和 checkpoint 参数命名仍保留；训练框架的入口和
+  独立训练测试脚本已移除。
 - 此精简分支不提供 LoRA adapter 推理/微调，只接受完整权重。
 - PyTorch checkpoint 可能含有 pickle，请仅加载可信来源的文件。

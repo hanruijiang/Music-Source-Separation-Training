@@ -7,7 +7,6 @@ from typing import Dict, List, Union
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.distributed as dist
 from ml_collections import ConfigDict
 from tqdm.auto import tqdm
 
@@ -73,10 +72,8 @@ def bigshifts_wrapper(
     model_type: str,
     pbar: bool = False,
     bigshifts: int = 1
-) -> Union[Dict[str, np.ndarray], np.ndarray]:
+) -> Dict[str, np.ndarray]:
     """BigShifts wrapper for inference-time demixing."""
-
-    should_print = not dist.is_initialized() or dist.get_rank() == 0
 
     if bigshifts <= 0:
         bigshifts = 1
@@ -88,7 +85,7 @@ def bigshifts_wrapper(
     shifts = [x * shift_in_samples for x in range(bigshifts)]
     results = []
 
-    if pbar and should_print:
+    if pbar:
         shifts_iterator = tqdm(shifts, desc="BigShifts passes...", leave=False)
     else:
         shifts_iterator = shifts
@@ -97,24 +94,13 @@ def bigshifts_wrapper(
         shifted_mix = np.concatenate((mix[:, -shift:], mix[:, :-shift]), axis=-1)
         sources = demix(config, model, shifted_mix, device, model_type, pbar)
 
-        if isinstance(sources, dict):
-            unshifted = {
-                k: np.concatenate((v[..., shift:], v[..., :shift]), axis=-1)
-                for k, v in sources.items()
-            }
-            results.append(unshifted)
-        elif isinstance(sources, np.ndarray):
-            unshifted = np.concatenate((sources[..., shift:], sources[..., :shift]), axis=-1)
-            results.append(unshifted)
-        else:
-            raise ValueError("Unsupported return type from demix")
+        unshifted = {
+            k: np.concatenate((v[..., shift:], v[..., :shift]), axis=-1)
+            for k, v in sources.items()
+        }
+        results.append(unshifted)
 
-    if isinstance(results[0], dict):
-        avg_result = {}
-        for k in results[0]:
-            avg_result[k] = np.mean([r[k] for r in results], axis=0)
-        return avg_result
-    return np.mean(results, axis=0)
+    return {k: np.mean([r[k] for r in results], axis=0) for k in results[0]}
 
 
 def demix(
@@ -124,12 +110,11 @@ def demix(
     device: torch.device,
     model_type: str,
     pbar: bool = False
-) -> Union[Dict[str, np.ndarray], np.ndarray]:
+) -> Dict[str, np.ndarray]:
     """
     Perform audio source separation with a given model.
 
-    Supports both Demucs-specific and generic processing modes, including
-    overlapping chunk-based inference with optional progress bar display.
+    Supports overlapping chunk-based inference with optional progress bar display.
     Handles padding, fading, and batching to reduce artifacts during separation.
 
     Args:
@@ -138,54 +123,35 @@ def demix(
         model (torch.nn.Module): Source separation model for inference.
         mix (torch.Tensor): Input audio tensor of shape (channels, time).
         device (torch.device): Device on which to run inference (CPU or CUDA).
-        model_type (str): Type of model (e.g., 'htdemucs', 'mdx23c') that
-            determines processing mode.
+        model_type (str): Architecture identifier for output-shape handling.
         pbar (bool, optional): If True, show a progress bar during chunk
             processing. Defaults to False.
 
     Returns:
-        Union[Dict[str, np.ndarray], np.ndarray]:
-            - Dictionary mapping instrument names to separated waveforms if
-              multiple instruments are predicted.
-            - NumPy array of separated audio if only a single instrument is
-              present (Demucs mode).
+        Dict[str, np.ndarray]: Mapping of instrument names to estimated waveforms.
     """
-
-    should_print = not dist.is_initialized() or dist.get_rank() == 0
 
     mix = torch.tensor(mix, dtype=torch.float32)
 
-    if model_type == 'htdemucs':
-        mode = 'demucs'
-        num_instruments = len(config.training.instruments)
-    else:
-        mode = 'generic'
-        num_instruments = len(prefer_target_instrument(config))
+    num_instruments = len(prefer_target_instrument(config))
 
     # keep whole track and accumulators on GPU (avoids per chunk transfers and slow CPU accumulation)
     acc_device = _get_accumulation_device(device, (num_instruments + 1) * mix.numel() * 4 * 1.5)
     mix = mix.to(acc_device)
 
-    # Define processing parameters based on the mode
-    if mode == 'demucs':
-        chunk_size = config.training.samplerate * config.training.segment
-        num_overlap = config.inference.num_overlap
-        step = chunk_size // num_overlap
+    # All retained architectures use overlapping chunk-based inference.
+    if 'chunk_size' in config.inference:
+        chunk_size = config.inference.chunk_size
     else:
-        if 'chunk_size' in config.inference:
-            chunk_size = config.inference.chunk_size
-        else:
-            chunk_size = config.audio.chunk_size
-        num_overlap = config.inference.num_overlap
-
-        fade_size = chunk_size // 10
-        step = chunk_size // num_overlap
-        border = chunk_size - step
-        length_init = mix.shape[-1]
-        windowing_array = _getWindowingArray(chunk_size, fade_size).to(acc_device)
-        # Add padding for generic mode to handle edge artifacts
-        if length_init > 2 * border and border > 0:
-            mix = nn.functional.pad(mix, (border, border), mode="reflect")
+        chunk_size = config.audio.chunk_size
+    num_overlap = config.inference.num_overlap
+    fade_size = chunk_size // 10
+    step = chunk_size // num_overlap
+    border = chunk_size - step
+    length_init = mix.shape[-1]
+    windowing_array = _getWindowingArray(chunk_size, fade_size).to(acc_device)
+    if length_init > 2 * border and border > 0:
+        mix = nn.functional.pad(mix, (border, border), mode="reflect")
 
     batch_size = config.inference.batch_size
     pad_batch = is_compiled_model(model)
@@ -193,8 +159,7 @@ def demix(
     use_amp = getattr(config.training, 'use_amp', True)
 
     with torch.cuda.amp.autocast(enabled=(use_amp and torch.device(device).type == 'cuda')):
-        # no_grad, not inference_mode: the model may fill lazy caches
-        # (rotary 'cached_freqs'), and inference tensors there break the next compiled training backward
+        # Use no_grad because some models populate mutable lazy inference caches.
         with torch.no_grad():
             # Initialize result and counter tensors (counter is the same for all instruments and channels)
             req_shape = (num_instruments,) + mix.shape
@@ -204,7 +169,7 @@ def demix(
             i = 0
             batch_data = []
             batch_locations = []
-            if pbar and should_print:
+            if pbar:
                 progress_bar = tqdm(
                     total=mix.shape[1], desc="Processing audio chunks", leave=False
                 )
@@ -215,7 +180,7 @@ def demix(
                 # Extract chunk and apply padding if necessary
                 part = mix[:, i:i + chunk_size].to(device)
                 chunk_len = part.shape[-1]
-                if mode == "generic" and chunk_len > chunk_size // 2:
+                if chunk_len > chunk_size // 2:
                     pad_mode = "reflect"
                 else:
                     pad_mode = "constant"
@@ -236,19 +201,15 @@ def demix(
                         x = x.unsqueeze(1)
 
                     for j, (start, seg_len) in enumerate(batch_locations):
-                        if mode == "generic":
-                            first = start == 0
-                            last = start + step >= mix.shape[1]
-                            window = windowing_array.clone() if fade_size and (first or last) else windowing_array
-                            if fade_size and first:
-                                window[:fade_size] = 1
-                            if fade_size and last:
-                                window[-fade_size:] = 1
-                            result[..., start:start + seg_len] += x[j, ..., :seg_len] * window[..., :seg_len]
-                            counter[start:start + seg_len] += window[..., :seg_len]
-                        else:
-                            result[..., start:start + seg_len] += x[j, ..., :seg_len]
-                            counter[start:start + seg_len] += 1.0
+                        first = start == 0
+                        last = start + step >= mix.shape[1]
+                        window = windowing_array.clone() if fade_size and (first or last) else windowing_array
+                        if fade_size and first:
+                            window[:fade_size] = 1
+                        if fade_size and last:
+                            window[-fade_size:] = 1
+                        result[..., start:start + seg_len] += x[j, ..., :seg_len] * window[..., :seg_len]
+                        counter[start:start + seg_len] += window[..., :seg_len]
 
                     batch_data.clear()
                     batch_locations.clear()
@@ -262,38 +223,25 @@ def demix(
             # Compute final estimated sources
             estimated_sources = result.div_(counter)
 
-            # Remove padding for generic mode
-            if mode == "generic":
-                if length_init > 2 * border and border > 0:
-                    estimated_sources = estimated_sources[..., border:-border]
+            # Remove overlap padding.
+            if length_init > 2 * border and border > 0:
+                estimated_sources = estimated_sources[..., border:-border]
 
             estimated_sources = estimated_sources.cpu().numpy()
             np.nan_to_num(estimated_sources, copy=False, nan=0.0)
 
-    # Return the result as a dictionary or a single array
-    if mode == "demucs":
-        instruments = config.training.instruments
-    else:
-        instruments = prefer_target_instrument(config)
-
-    ret_data = {k: v for k, v in zip(instruments, estimated_sources)}
-
-    if mode == "demucs" and num_instruments <= 1:
-        return estimated_sources
-    else:
-        return ret_data
-
+    return dict(zip(prefer_target_instrument(config), estimated_sources))
 
 def apply_tta(
     config,
     model: torch.nn.Module,
     mix: torch.Tensor,
-    waveforms_orig: Union[dict[str, np.ndarray], np.ndarray],
+    waveforms_orig: dict[str, np.ndarray],
     device: torch.device,
     model_type: str,
     bigshifts: int = 1,
     pbar: bool = False
-) -> Union[dict[str, np.ndarray], np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     Enhance source separation results using Test-Time Augmentation (TTA).
 

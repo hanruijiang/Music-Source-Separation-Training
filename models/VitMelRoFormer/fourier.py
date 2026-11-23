@@ -86,13 +86,3 @@ class Fourier(nn.Module):
         out = rearrange(x, '(b c) l -> b c l', b=B, c=C)  # (b, c, l)
         
         return out
-
-
-if __name__ == '__main__':
-
-    model = Fourier(n_fft=2048, hop_length = 480)
-    x = torch.randn(8, 4, 96000)  # (b, c, l)
-    stft = model.stft(x)  # (b, c, t, f)
-    out = model.istft(stft)  # (b, c, l)
-
-    print((x - out).abs().mean())

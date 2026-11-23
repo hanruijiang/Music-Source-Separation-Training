@@ -12,7 +12,6 @@ dependencies = [
   "matplotlib",
   "ml-collections",
   "numpy>=2.0.0",
-  "omegaconf",
   "soundfile",
   "torch>=2.6.0",
   "torchaudio",
@@ -27,17 +26,15 @@ vocal-separate = "inference:main"
 Repository = "https://github.com/ZFTurbo/Music-Source-Separation-Training"
 
 [project.optional-dependencies]
+test = ["pytest"]
 # Only model-family dependencies; no train / validation / LoRA / GUI extras.
 bs_roformer = ["beartype", "einops", "packaging", "rotary-embedding-torch", "PoPE-pytorch"]
 mel_band_roformer = ["beartype", "einops", "packaging", "rotary-embedding-torch", "PoPE-pytorch"]
 bs_conformer = ["beartype", "einops", "packaging", "rotary-embedding-torch"]
 mel_band_conformer = ["beartype", "einops", "packaging", "rotary-embedding-torch"]
-bs_mamba2 = ["beartype", "einops", "packaging", "mamba-ssm ; platform_system == 'Linux' and platform_machine == 'x86_64'", "rotary-embedding-torch"]
-htdemucs = ["demucs", "einops", "openunmix"]
 mdx23c = []
 segm_models = ["segmentation-models-pytorch", "timm"]
 torchseg = ["torchseg", "timm"]
-swin_upernet = ["transformers"]
 bandit = ["spafe"]
 scnet_unofficial = ["beartype", "einops"]
 scnet = []

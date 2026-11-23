@@ -18,7 +18,7 @@ python -m pip install -e ".[mel_band_roformer]"
 ```
 
 Choose the model-family extra corresponding to your pretrained model.
-For example, `.[bs_roformer]`, `.[mdx23c]` or `.[htdemucs]`.
+For example, `.[bs_roformer]`, `.[mdx23c]` or `.[segm_models]`.
 Some architectures need GPU/Linux-specific dependencies.
 
 ## Command-line inference
@@ -57,7 +57,7 @@ checkpoints can execute untrusted pickle content; do not load unknown sources.
 
 ## Vocal presets
 
-Models supported: `mdx23c`, `htdemucs`, `segm_models`, `torchseg`, `mel_band_roformer`, `mel_band_conformer`, `bs_roformer`, `bs_conformer`, `bs_mamba2`, `swin_upernet`, `bandit`, `scnet_unofficial`, `scnet`, `dttnet`, `dbs_bsrnn`, `dbs_bs_roformer`, `dbs_mel_roformer`, `mel_roformer_official`, `bs_roformer_official`, `vit_mel_roformer`.
+Models supported: `mdx23c`, `segm_models`, `torchseg`, `mel_band_roformer`, `mel_band_conformer`, `bs_roformer`, `bs_conformer`, `bandit`, `scnet_unofficial`, `scnet`, `dttnet`, `dbs_bsrnn`, `dbs_bs_roformer`, `dbs_mel_roformer`, `mel_roformer_official`, `bs_roformer_official`, `vit_mel_roformer`.
 
 See [pretrained Vocal models](docs/pretrained_models.md) and the
 [detailed inference guide](docs/inference.md). No training features remain in
