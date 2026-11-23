@@ -20,7 +20,7 @@ from .core import (
     SingleMaskBandsplitCoreTransformer,
 )
 
-import pytorch_lightning as pl
+
 
 def get_band_specs(band_specs, n_fft, fs, n_bands=None):
     if band_specs in ["dnr:speech", "dnr:vox7", "musdb:vocals", "musdb:vox7"]:
@@ -126,7 +126,7 @@ def get_band_specs_map(band_specs_map, n_fft, fs, n_bands=None):
     return bsm, freq_weights, overlapping_band
 
 
-class BandSplitWrapperBase(pl.LightningModule):
+class BandSplitWrapperBase(nn.Module):
     bsrnn: nn.Module
     
     def __init__(self, **kwargs):

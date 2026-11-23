@@ -21,9 +21,7 @@ from utils.settings import get_model_from_config, parse_args_inference
 from utils.model_utils import bigshifts_wrapper
 from utils.model_utils import prefer_target_instrument, apply_tta, load_start_checkpoint, compile_model
 
-import warnings
 
-warnings.filterwarnings("ignore")
 
 
 def run_folder(
@@ -32,7 +30,7 @@ def run_folder(
     config: dict,
     device: "torch.device",
     verbose: bool = False
-) -> None:
+) -> list[str]:
     """
     Process a folder of audio files for source separation.
 
@@ -52,6 +50,7 @@ def run_folder(
 
     start_time = time.time()
     model.eval()
+    written_files = []
 
     # Recursively collect all files from input directory
     mixture_paths = sorted(
@@ -131,8 +130,11 @@ def run_folder(
 
         # Extract instrumental track if requested
         if args.extract_instrumental:
-            instr = "vocals" if "vocals" in instruments else instruments[0]
-            waveforms_orig["instrumental"] = mix_orig - waveforms_orig[instr]
+            instr = "vocals"
+            vocals_estimate = waveforms_orig[instr]
+            if config.inference.get("normalize", False):
+                vocals_estimate = denormalize_audio(vocals_estimate, norm_params)
+            waveforms_orig["instrumental"] = mix_orig - vocals_estimate
             if "instrumental" not in instruments:
                 instruments.append("instrumental")
 
@@ -140,15 +142,10 @@ def run_folder(
             estimates = waveforms_orig[instr]
 
             # Denormalize output audio if normalization was applied
-            if "normalize" in config.inference:
-                if config.inference["normalize"] is True:
-                    estimates = denormalize_audio(estimates, norm_params)
+            if instr != "instrumental" and config.inference.get("normalize", False):
+                estimates = denormalize_audio(estimates, norm_params)
 
-            peak: float = float(np.abs(estimates).max())
-            if peak <= 1.0 and args.pcm_type != 'FLOAT':
-                codec = "flac"
-            else:
-                codec = "wav"
+            codec = "flac" if args.flac_file else "wav"
 
             subtype = args.pcm_type
 
@@ -171,6 +168,7 @@ def run_folder(
 
             output_path: str = os.path.join(output_dir, f"{fname}.{codec}")
             sf.write(output_path, estimates.T, sr, subtype=subtype)
+            written_files.append(output_path)
 
             # Draw and save spectrogram if enabled
             if args.draw_spectro > 0:
@@ -179,6 +177,7 @@ def run_folder(
                 print("Wrote file:", output_img_path)
 
     print(f"Elapsed time: {time.time() - start_time:.2f} seconds.")
+    return written_files
 
 def format_filename(template, **kwargs):
     '''
@@ -231,8 +230,28 @@ def proc_folder(dict_args):
 
     print("Model load time: {:.2f} sec".format(time.time() - model_load_start_time))
 
-    run_folder(model, args, config, device, verbose=True)
+    return run_folder(model, args, config, device, verbose=True)
+
+
+def separate_folder(*, model_type: str, config_path: str,
+                    checkpoint_path: str, input_folder: str,
+                    output_folder: str, **options) -> list[str]:
+    """Run vocal separation from Python and return written audio paths.
+
+    Example: separate_folder(model_type='bs_roformer',
+        config_path='configs/config_vocals_bs_roformer.yaml',
+        checkpoint_path='weights.ckpt', input_folder='audio', output_folder='out')
+    """
+    params = dict(model_type=model_type, config_path=str(config_path),
+                  start_check_point=str(checkpoint_path),
+                  input_folder=str(input_folder), store_dir=str(output_folder))
+    params.update(options)
+    return proc_folder(params)
+
+
+def main() -> None:
+    proc_folder(None)
 
 
 if __name__ == "__main__":
-    proc_folder(None)
+    main()

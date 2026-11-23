@@ -1,162 +1,66 @@
-# Music Source Separation Universal Training Code
+# Vocal separation — inference only
 
-Repository for training models for music source separation. Repository is based on [kuielab code](https://github.com/kuielab/sdx23/tree/mdx_AB/my_submission/src) for [SDX23 challenge](https://github.com/kuielab/sdx23/tree/mdx_AB/my_submission/src). The main idea of this repository is to create training code, which is easy to modify for experiments. Brought to you by [MVSep.com](https://mvsep.com).
+这是 [Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training)
+的 **Vocal-only / inference-only** 精简版本。
 
-## Models
+- ✅ 保留：人声分离模型、预训练权重推理、命令行、Python API。
+- ✅ 人声模型的 `other` / `instrumental` 指伴奏输出，不是非人声模型分类。
+- ❌ 删除：训练、验证/基准测试、微调/LoRA、自动批大小训练、GUI、音轨集成、数据集准备脚本。
+- ⚠️ 模型架构文件中的必要权重结构、前向传播和个别内部 loss 不能随意删除，
+  以免破坏推理所需的模型实例和 checkpoint 兼容性。
 
-Model can be chosen with `--model_type` arg.
+## Install
 
-Available models for training:
-
-* MDX23C based on [KUIELab TFC TDF v3 architecture](https://github.com/kuielab/sdx23/). Key: `mdx23c`.
-* Demucs4HT [[Paper](https://arxiv.org/abs/2211.08553)]. Key: `htdemucs`.
-* VitLarge23 based on [Segmentation Models Pytorch](https://github.com/qubvel/segmentation_models.pytorch). Key: `segm_models`.
-* TorchSeg based on [TorchSeg module](https://github.com/qubvel/segmentation_models.pytorch). Key: `torchseg`.
-* Band Split RoFormer [[Paper](https://arxiv.org/abs/2309.02612), [Repository](https://github.com/lucidrains/BS-RoFormer)] . Key: `bs_roformer`.
-* Mel-Band RoFormer [[Paper](https://arxiv.org/abs/2310.01809), [Repository](https://github.com/lucidrains/BS-RoFormer)]. Key: `mel_band_roformer`.
-* Bandsplit/Mel Roformer official [[Paper](https://arxiv.org/abs/2309.02612), [Paper](https://arxiv.org/abs/2310.01809), [Repository](https://github.com/asriverwang/BS-RoFormer)] Key: `mel_roformer_official`, `bs_roformer_official`.
-* Swin Upernet [[Paper](https://arxiv.org/abs/2103.14030)] Key: `swin_upernet`.
-* BandIt Plus [[Paper](https://arxiv.org/abs/2309.02539), [Repository](https://github.com/karnwatcharasupat/bandit)] Key: `bandit`.
-* SCNet [[Paper](https://arxiv.org/abs/2401.13276), [Official Repository](https://github.com/starrytong/SCNet), [Unofficial Repository](https://github.com/amanteur/SCNet-PyTorch)] Key: `scnet`.
-* BandIt v2 [[Paper](https://arxiv.org/abs/2407.07275), [Repository](https://github.com/kwatcharasupat/bandit-v2)] Key: `bandit_v2`.
-* Apollo [[Paper](https://arxiv.org/html/2409.08514v1), [Repository](https://github.com/JusperLee/Apollo)] Key: `apollo`.
-* BSMamba2 [[Paper](https://arxiv.org/abs/2508.14556), [Repository](https://github.com/EuiYeonKim/BSMamba2)] Key: `bs_mamba2`.
-* Conformer [[Paper](https://arxiv.org/abs/2005.08100), [Repository](https://github.com/lucidrains/conformer)] Key: `conformer`.
-* DTTNet [[Paper](https://arxiv.org/abs/2309.08684), [Repository](https://github.com/junyuchen-cjy/DTTNet-Pytorch)] Key: `dttnet`.
-* BS Conformer Key: `bs_conformer`
-* SCNet Tran Key: `scnet_tran`.
-* SCNet Masked Key: `scnet_masked`.
-* SubRoformer [[Paper](https://arxiv.org/abs/2611.08130), [Repository](https://github.com/ArchiMickey/SubRoformer), [Official weights](https://huggingface.co/archimickey/SubRoformer/tree/main)] Key: `sub_roformer`.
-* DBS - Dynamic-Band-Splitting  [[Paper](https://arxiv.org/pdf/2610.14993), [Repository](https://github.com/JusperLee/Dynamic-Band-Splitting)] Key: `dbs_bsrnn`, `dbs_mel_roformer`, `dbs_bs_roformer`.
-* VitMel_RoFormer [[Repository](https://github.com/qiuqiangkong/music_source_separation)] Key: `vit_mel_roformer`.
-
-
-1. **Note 1**: For `segm_models` there are many different encoders is possible. [Look here](https://github.com/qubvel/segmentation_models.pytorch#encoders-).
-2. **Note 2**: Thanks to [@lucidrains](https://github.com/lucidrains) for recreating the RoFormer models based on papers.
-3. **Note 3**: For `torchseg` gives access to more than 800 encoders from `timm` module. It's similar to `segm_models`.
-
-## How to: Train
-
-The source repository requires PyTorch 2.6 or newer. Use a matching torchaudio build and a CUDA-enabled PyTorch build for GPU training.
-
-To train model you need to:
-
-1) Choose model type with option `--model_type`, including: `mdx23c`, `htdemucs`, `segm_models`, `mel_band_roformer`, `bs_roformer`.
-2) Choose location of config for model `--config_path` `<config path>`. You can find examples of configs in [configs folder](configs/). Prefixes `config_musdb18_` are examples for [MUSDB18 dataset](https://sigsep.github.io/datasets/musdb.html).
-3) If you have a check-point from the same model or from another similar model you can use it with option: `--start_check_point` `<weights path>`
-4) Choose path where to store results of training `--results_path` `<results folder path>`
-
-### Training example
+Install a compatible PyTorch (CPU or CUDA) build first, then:
 
 ```bash
-python train.py \
-    --model_type mel_band_roformer \
-    --config_path configs/config_mel_band_roformer_vocals.yaml \
-    --start_check_point results/model.ckpt \
-    --results_path results/ \
-    --data_path 'datasets/dataset1' 'datasets/dataset2' \
-    --valid_path datasets/musdb18hq/test \
-    --num_workers 4 \
-    --device_ids 0
+python -m pip install -e ".[mel_band_roformer]"
 ```
 
-All training parameters are [here](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/utils/settings.py#L20).
+Choose the model-family extra corresponding to your pretrained model.
+For example, `.[bs_roformer]`, `.[mdx23c]` or `.[htdemucs]`.
+Some architectures need GPU/Linux-specific dependencies.
 
-### Training with LoRA
-
-Look here: [LoRA training](docs/LoRA.md)
-
-## How to: Inference
-
-### Inference example
+## Command-line inference
 
 ```bash
-python inference.py \
-    --model_type mdx23c \
-    --config_path configs/config_mdx23c_musdb18.yaml \
-    --start_check_point results/last_mdx23c.ckpt \
-    --input_folder input/wavs/ \
-    --store_dir separation_results/
+vocal-separate \
+  --model_type mel_band_roformer \
+  --config_path configs/config_vocals_mel_band_roformer.yaml \
+  --start_check_point /path/to/vocals.ckpt \
+  --input_folder input_audio \
+  --store_dir outputs
 ```
 
-All inference parameters are [here](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/utils/settings.py#L130).
-Convert models to ONNX and TensorRT formats [here](https://github.com/ZFTurbo/MSS_ONNX_TensorRT).
+Without installation, use `python inference.py` with the same arguments.
+To additionally output accompaniment from the predicted vocals, add
+`--extract_instrumental`. For all available inference flags: `vocal-separate --help`.
 
-## Useful notes
+## Python API
 
-* All batch sizes in config are adjusted to use with single NVIDIA A6000 48GB. If you have less memory please adjust correspodningly in model config `training.batch_size` and `training.gradient_accumulation_steps`.
-* It's usually always better to start with old weights even if shapes not fully match. Code supports loading weights for not fully same models (but it must have the same architecture). Training will be much faster.
+```python
+from inference import separate_folder
 
-## Code description
-
-* `configs/config_*.yaml` - configuration files for models
-* `models/*` - set of available models for training and inference
-* `dataset.py` - dataset which creates new samples for training
-* `gui-wx.py` - GUI interface for code
-* `inference.py` - process folder with music files and separate them
-* `train.py` - main training code for single GPU
-* `train_ddp.py` - training code for Multi GPU config. Faster than `train.py`. Use it for 2 or more GPUs.
-* `utils.py` - common functions used by train/valid
-* `valid.py` - validation of model with metrics
-* `ensemble.py` - useful script to ensemble results of different models to make results better (see [docs](docs/ensemble.md)).   
-
-## Pre-trained models
-
-Look here: [List of Pre-trained models](docs/pretrained_models.md)
-
-If you trained some good models, please, share them. You can post config and model weights [in this issue](https://github.com/ZFTurbo/Music-Source-Separation-Training/issues/1).
-
-## Dataset types
-
-Look here: [Dataset types](docs/dataset_types.md)
-
-## Augmentations
-
-Look here: [Augmentations](docs/augmentations.md)
-
-## Graphical user interface
-
-Look here: [GUI documentation](docs/gui.md) or see tutorial on [Youtube](https://youtu.be/M8JKFeN7HfU)
-
-## Package installation
-
-```bash
-pip install msst
-```
-- [Getting started](docs/getting_started.md) — getting started with MSST package
-- [Python API](docs/python_api.md) — signatures, parameters, return values, and errors.
-- [Command-line interface](docs/cli.md) — command syntax and shell examples.
-- [Compatibility](docs/compatibility.md) — model extras, devices, and audio formats.
-- [Experiments](docs/experiments.md) — portable organization and tracking.
-
-## Citation
-
-* [MSST paper](https://arxiv.org/abs/2607.23395)
-* [Benchmarks paper](https://reference-global.com/download/article/10.5334/tismir.366.pdf)
-
-```text
-@misc{solovyev2026musicsourceseparationtrainingmsstunifiedframework,
-  title={Music-Source-Separation-Training (MSST): A Unified Framework for Training and Evaluating Music Demixing Models}, 
-  author={Roman Solovyev and Ilya Kiselev and Alexander Stempkovskiy and Tatiana Gabruseva},
-  year={2026},
-  eprint={2607.23395},
-  archivePrefix={arXiv},
-  primaryClass={cs.SD},
-  url={https://arxiv.org/abs/2607.23395}, 
-}
-
-@article{solovyev2026evaluation,
-  title={Evaluation Platform and Benchmarks for Music Source Separation},
-  author={Solovyev, Roman and Habruseva, Tatiana and Bonnot, Jeremy and Stempkovskiy, Alexander and van Wijnen, Ferdinand},
-  journal={Transactions of the International Society for Music Information Retrieval},
-  volume={9},
-  number={1},
-  pages={625--639},
-  year={2026},
-  publisher={Ubiquity Press}
-}
+files = separate_folder(
+    model_type="mel_band_roformer",
+    config_path="configs/config_vocals_mel_band_roformer.yaml",
+    checkpoint_path="/path/to/vocals.ckpt",
+    input_folder="input_audio",
+    output_folder="outputs",
+    extract_instrumental=True,
+)
+print(files)
 ```
 
-## Automatic batch calibration
+Only **full, trusted** checkpoints are supported. Loading arbitrary PyTorch
+checkpoints can execute untrusted pickle content; do not load unknown sources.
 
-Use `--do_max_batch` for opt-in single-GPU calibration before training. See [usage, limits and Slurm checks](docs/auto_batch.md).
+## Vocal presets
+
+Models supported: `mdx23c`, `htdemucs`, `segm_models`, `torchseg`, `mel_band_roformer`, `mel_band_conformer`, `bs_roformer`, `bs_conformer`, `bs_mamba2`, `swin_upernet`, `bandit`, `scnet_unofficial`, `scnet`, `dttnet`, `dbs_bsrnn`, `dbs_bs_roformer`, `dbs_mel_roformer`, `mel_roformer_official`, `bs_roformer_official`, `vit_mel_roformer`.
+
+See [pretrained Vocal models](docs/pretrained_models.md) and the
+[detailed inference guide](docs/inference.md). No training features remain in
+the public CLI or API.
+
+Original upstream project and its license remain credited.
