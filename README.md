@@ -1,6 +1,6 @@
 # Vocal separation — only five selected pretrained models
 
-这是 [Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training)
+这是 [hanruijiang/Music-Source-Separation-Training](https://github.com/hanruijiang/Music-Source-Separation-Training)
 的精简 **人声推理专用** 仓库。仅保留下面指定的 5 个版本（4 种底层架构）。
 删除了训练、验证、微调/LoRA、GUI、其它模型家族及其它预设。
 
@@ -64,4 +64,9 @@ print(paths)
 ```
 
 仅加载可信的完整 PyTorch checkpoint；加载恶意 pickle 权重具有执行代码风险。
+
+仓库内部文档与配置链接指向本 fork；上方的部分 checkpoint
+仍从 [原项目 Releases](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases) 下载。
+`hanruijiang` fork 当前没有镜像这些 Release 资源，因此不要将下载地址机械替换为 fork。
+原作者署名和上游项目链接也予以保留。
 更多细节见 [推理指南](docs/inference.md)、[模型与权重](docs/pretrained_models.md)。

@@ -1,6 +1,9 @@
 # Five selected vocal models
 
-只保留以下 5 个**具体版本**。SDR 为上游 Multisong Dataset 参考结果，
+只保留以下 5 个**具体版本**。本地配置位于
+[hanruijiang 仓库](https://github.com/hanruijiang/Music-Source-Separation-Training)；
+上游发布的权重仍使用原始下载地址，不代表本 fork 已重新发布权重。
+SDR 为上游 Multisong Dataset 参考结果，
 非本分支新测得的分数。
 
 | 模型 | `model_type` | Vocal SDR | 本地配置 | 原始 checkpoint |

@@ -1,5 +1,9 @@
 # 五个预训练人声模型的推理指南
 
+项目仓库：[hanruijiang/Music-Source-Separation-Training](https://github.com/hanruijiang/Music-Source-Separation-Training)。
+本仓库中的 YAML 和说明使用相对路径；部分 checkpoint 的下载地址保留在
+上游 Release，因为本 fork 尚未发布对应的权重文件。
+
 仅保留命令行 `python inference.py` / `vocal-separate` 和 Python
 API `inference.separate_folder`，不包含训练或 GUI。
 

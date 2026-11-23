@@ -93,3 +93,16 @@ def test_cli_and_api():
 def test_no_training_or_gui():
     for path in ("train.py", "valid.py", "ensemble.py", "train_ddp.py", "gui", "scripts"):
         assert not (ROOT / path).exists()
+
+
+def test_repository_links_point_to_this_fork():
+    import re
+    repository = "https://github.com/hanruijiang/Music-Source-Separation-Training"
+    readme = (ROOT / "README.md").read_text()
+    docs = (ROOT / "docs/inference.md").read_text()
+    assert f"[hanruijiang/Music-Source-Separation-Training]({repository})" in readme
+    assert repository in docs
+    # Keep original author attribution and verified upstream weight downloads.
+    old = "https://github.com/ZFTurbo/Music-Source-Separation-Training"
+    assert f"{old}/releases/download/" in readme
+    assert f"Repository = \"{repository}\"" in (ROOT / "pyproject.toml").read_text()
