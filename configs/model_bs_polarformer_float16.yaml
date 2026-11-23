@@ -2,14 +2,8 @@
 # https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.20/model_bs_polarformer_float16.yaml
 # The model architecture options below match the pretrained checkpoint.
 audio:
-  chunk_size: 588800
-  dim_f: 1024
-  dim_t: 801
-  hop_length: 441
-  n_fft: 2048
   num_channels: 2
   sample_rate: 44100
-  min_mean_abs: 0.0
 
 model:
   dim: 256
@@ -18,7 +12,6 @@ model:
   num_stems: 1
   time_transformer_depth: 1
   freq_transformer_depth: 1
-  linear_transformer_depth: 0
   freqs_per_bands: !!python/tuple
     - 2
     - 2
@@ -93,18 +86,7 @@ model:
   stft_win_length: 2048
   stft_normalized: false
   mask_estimator_depth: 2
-  multi_stft_resolution_loss_weight: 1.0
-  multi_stft_resolutions_window_sizes: !!python/tuple
-    - 4096
-    - 2048
-    - 1024
-    - 512
-    - 256
-  multi_stft_hop_size: 147
-  multi_stft_normalized: false
   mlp_expansion_factor: 4
-  use_torch_checkpoint: false
-  skip_connection: false
   use_pope: true
 
 training:
@@ -117,6 +99,5 @@ training:
 inference:
   chunk_size: 882000
   batch_size: 4
-  dim_t: 1101
   num_overlap: 2
   normalize: false
