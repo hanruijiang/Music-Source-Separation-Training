@@ -30,6 +30,7 @@ python -m pip install -e ".[bs_polarformer]"
 ```
 
 `bs_polarformer` extra 自动包含 `PoPE-pytorch`，其它模型不会安装它。
+PolarFormer 不需要 `rotary-embedding-torch`。
 使用 `--draw_spectro` 时额外安装 `.[spectrogram]`。
 Segm Models 实例化时不会下载不必要的 ImageNet 编码器权重。
 

@@ -10,7 +10,7 @@ audio:
 
 model:
   encoder_name: tu-maxvit_large_tf_512 # look here for possibilities: https://github.com/qubvel/segmentation_models.pytorch#encoders-
-  decoder_type: unet # unet, fpn
+  decoder_type: unet
   act: gelu
   num_channels: 128
   num_subbands: 8

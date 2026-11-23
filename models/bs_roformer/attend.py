@@ -1,18 +1,10 @@
-from functools import wraps
-from collections import namedtuple
+"""Attention for RoFormer inference."""
 from inspect import signature
 
-import os
-import torch
 from torch import nn, einsum
 import torch.nn.functional as F
-
-
-# constants
-
-FlashAttentionConfig = namedtuple('FlashAttentionConfig', ['enable_flash', 'enable_math', 'enable_mem_efficient'])
-
 from torch.nn.attention import sdpa_kernel, SDPBackend
+
 
 INFERENCE_SDPA_BACKENDS = [
     SDPBackend.CUDNN_ATTENTION,
@@ -20,130 +12,31 @@ INFERENCE_SDPA_BACKENDS = [
     SDPBackend.EFFICIENT_ATTENTION,
     SDPBackend.MATH,
 ]
-# Older supported PyTorch releases may not expose explicit backend ordering.
 _SDPA_HAS_PRIORITY = 'set_priority' in signature(sdpa_kernel).parameters
 
-# helpers
-
-def exists(val):
-    return val is not None
-
-def default(v, d):
-    return v if exists(v) else d
-
-def once(fn):
-    called = False
-    @wraps(fn)
-    def inner(x):
-        nonlocal called
-        if called:
-            return
-        called = True
-        return fn(x)
-    return inner
-
-print_once = once(print)
-
-# main class
 
 class Attend(nn.Module):
-    def __init__(
-        self,
-        dropout = 0.,
-        flash = False,
-        scale = None
-    ):
+    def __init__(self, dropout=0., flash=False, scale=None):
         super().__init__()
+        # Keep the existing constructor interface; inference disables dropout.
         self.scale = scale
-        self.dropout = dropout
-        self.attn_dropout = nn.Dropout(dropout)
-
         self.flash = flash
 
-        # determine efficient attention configs for cuda and cpu
-
-        self.cpu_config = FlashAttentionConfig(True, True, True)
-        self.cuda_config = None
-
-        if not torch.cuda.is_available() or not flash:
-            return
-
-        device_properties = torch.cuda.get_device_properties(torch.device('cuda'))
-        device_version = (device_properties.major, device_properties.minor)
-
-        if device_version >= (8, 0):
-            if os.name == 'nt':
-                print_once('Windows OS detected, using math or mem efficient attention if input tensor is on cuda')
-                self.cuda_config = FlashAttentionConfig(False, True, True)
-            else:
-                print_once('GPU Compute Capability equal or above 8.0, using flash attention if input tensor is on cuda')
-                self.cuda_config = FlashAttentionConfig(True, False, False)
-        else:
-            print_once('GPU Compute Capability below 8.0, using math or mem efficient attention if input tensor is on cuda')
-            self.cuda_config = FlashAttentionConfig(False, True, True)
-
-    def flash_attn(self, q, k, v):
-        is_cuda = q.is_cuda
-
-        if exists(self.scale):
-            default_scale = q.shape[-1] ** -0.5
-            q = q * (self.scale / default_scale)
-
-        # inference on cuda: prefer cuDNN attention (available on Windows builds, ~1.9x faster than
-        # mem efficient kernel for long sequences on Ampere/Blackwell), fall back to the others if unsupported
-        if is_cuda and not self.training:
-            if _SDPA_HAS_PRIORITY:
-                with sdpa_kernel(INFERENCE_SDPA_BACKENDS, set_priority=True):
-                    return F.scaled_dot_product_attention(q, k, v)
-            with sdpa_kernel(INFERENCE_SDPA_BACKENDS):
-                return F.scaled_dot_product_attention(q, k, v)
-
-        # Check if there is a compatible device for flash attention
-
-        config = self.cuda_config if is_cuda else self.cpu_config
-
-        # Preserve the legacy context's enabled backends, including cuDNN.
-        backends = [SDPBackend.CUDNN_ATTENTION]
-        if config.enable_flash:
-            backends.append(SDPBackend.FLASH_ATTENTION)
-        if config.enable_math:
-            backends.append(SDPBackend.MATH)
-        if config.enable_mem_efficient:
-            backends.append(SDPBackend.EFFICIENT_ATTENTION)
-
-        with sdpa_kernel(backends):
-            out = F.scaled_dot_product_attention(
-                q, k, v,
-                dropout_p = self.dropout if self.training else 0.
-            )
-
-        return out
-
     def forward(self, q, k, v):
-        """
-        einstein notation
-        b - batch
-        h - heads
-        n, i, j - sequence length (base sequence length, source, target)
-        d - feature dimension
-        """
-
-        scale = default(self.scale, q.shape[-1] ** -0.5)
-
         if self.flash:
-            return self.flash_attn(q, k, v)
+            # Preserve the existing custom scaling of the query.
+            if self.scale is not None:
+                q = q * (self.scale / (q.shape[-1] ** -0.5))
+            if q.is_cuda:
+                if _SDPA_HAS_PRIORITY:
+                    with sdpa_kernel(INFERENCE_SDPA_BACKENDS, set_priority=True):
+                        return F.scaled_dot_product_attention(q, k, v)
+                with sdpa_kernel(INFERENCE_SDPA_BACKENDS):
+                    return F.scaled_dot_product_attention(q, k, v)
+            return F.scaled_dot_product_attention(q, k, v)
 
-        # similarity
-
-        sim = einsum(f"b h i d, b h j d -> b h i j", q, k) * scale
-
-        # attention
-
+        # Keep the non-SDPA path for custom inference configurations.
+        scale = self.scale if self.scale is not None else q.shape[-1] ** -0.5
+        sim = einsum("b h i d, b h j d -> b h i j", q, k) * scale
         attn = sim.softmax(dim=-1)
-        attn = self.attn_dropout(attn)
-
-        # aggregate values
-
-        out = einsum(f"b h i j, b h j d -> b h i d", attn, v)
-
-        return out
+        return einsum("b h i j, b h j d -> b h i d", attn, v)

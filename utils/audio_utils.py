@@ -69,9 +69,11 @@ def draw_spectrogram(waveform: np.ndarray, sample_rate: int, length: float, outp
     import librosa.display
     import matplotlib.pyplot as plt
 
-    # Cut only required part of spectorgram
-    x = waveform[:int(length * sample_rate), :]
-    X = librosa.stft(x.mean(axis=-1))  # perform short-term fourier transform on mono signal
+    if waveform.ndim not in (1, 2):
+        raise ValueError('waveform must be a 1D or 2D array')
+    x = waveform[:int(length * sample_rate)]
+    mono = x if x.ndim == 1 else x.mean(axis=-1)
+    X = librosa.stft(mono)
     Xdb = librosa.amplitude_to_db(np.abs(X), ref=np.max)  # convert an amplitude spectrogram to dB-scaled spectrogram.
     fig, ax = plt.subplots()
     img = librosa.display.specshow(

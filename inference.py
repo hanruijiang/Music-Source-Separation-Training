@@ -5,6 +5,7 @@ import time
 import librosa
 import os
 import glob
+from pathlib import Path
 import torch
 import soundfile as sf
 import numpy as np
@@ -46,13 +47,27 @@ def run_folder(
     start_time = time.time()
     model.eval()
     written_files = []
+    claimed_paths = set()
+    failed_files = 0
 
-    # Recursively collect all files from input directory
+    input_root = Path(args.input_folder).resolve()
+    output_root = Path(args.store_dir).resolve()
+    if not input_root.is_dir():
+        raise ValueError(f'Input folder does not exist: {args.input_folder}')
+    if input_root == output_root:
+        raise ValueError('Input and output folders must be different')
+
+    # Recursively collect files, excluding previous results inside the input tree.
     mixture_paths = sorted(
         glob.glob(os.path.join(args.input_folder, "**/*.*"), recursive=True)
     )
-    mixture_paths = [p for p in mixture_paths if os.path.isfile(p)]
+    mixture_paths = [p for p in mixture_paths if os.path.isfile(p)
+                     and not (output_root.is_relative_to(input_root)
+                              and Path(p).resolve().is_relative_to(output_root))]
+    if not mixture_paths:
+        raise ValueError(f'No input files found: {args.input_folder}')
 
+    input_paths = {Path(path).resolve() for path in mixture_paths}
     sample_rate: int = getattr(config.audio, "sample_rate", 44100)
 
     print(f"Total files found: {len(mixture_paths)}. Using sample rate: {sample_rate}")
@@ -65,16 +80,13 @@ def run_folder(
         mixture_paths = tqdm(mixture_paths, desc="Total progress")
 
     # Determine whether to use detailed progress bar
-    if args.disable_detailed_pbar:
-        detailed_pbar = False
-    else:
-        detailed_pbar = True
+    detailed_pbar = not args.disable_detailed_pbar
 
     for path in mixture_paths:
         # Get relative path from input folder
         relative_path: str = os.path.relpath(path, args.input_folder)
         # Extract directory and file name
-        dir_name: str = os.path.dirname(relative_path)
+        dir_name: str = os.path.dirname(relative_path) or '.'
         file_name: str = os.path.splitext(os.path.basename(path))[0]
 
         try:
@@ -82,22 +94,28 @@ def run_folder(
         except Exception as e:
             print(f"Cannot read track: {format(path)}")
             print(f"Error message: {str(e)}")
+            failed_files += 1
             continue
 
         # Convert mono audio to expected channel format if needed
         if len(mix.shape) == 1:
             mix = np.expand_dims(mix, axis=0)
-            if "num_channels" in config.audio:
-                if config.audio["num_channels"] == 2:
-                    print("Convert mono track to stereo...")
-                    mix = np.concatenate([mix, mix], axis=0)
+            if config.audio.get('num_channels', 2) == 2:
+                print('Convert mono track to stereo...')
+                mix = np.concatenate([mix, mix], axis=0)
+
+        expected_channels = config.audio.get('num_channels', 2)
+        if mix.ndim != 2 or mix.shape[0] != expected_channels or mix.shape[-1] == 0:
+            print(f'Skip unsupported or empty audio: {path}')
+            failed_files += 1
+            continue
 
         mix_orig = mix.copy()
 
         # Normalize input audio if enabled
-        if "normalize" in config.inference:
-            if config.inference["normalize"] is True:
-                mix, norm_params = normalize_audio(mix)
+        normalize = config.inference.get('normalize', False)
+        if normalize:
+            mix, norm_params = normalize_audio(mix)
 
         # Perform source separation
         waveforms_orig = bigshifts_wrapper(
@@ -125,7 +143,7 @@ def run_folder(
         if args.extract_instrumental:
             instr = "vocals"
             vocals_estimate = waveforms_orig[instr]
-            if config.inference.get("normalize", False):
+            if normalize:
                 vocals_estimate = denormalize_audio(vocals_estimate, norm_params)
             waveforms_orig["instrumental"] = mix_orig - vocals_estimate
             if "instrumental" not in instruments:
@@ -135,7 +153,7 @@ def run_folder(
             estimates = waveforms_orig[instr]
 
             # Denormalize output audio if normalization was applied
-            if instr != "instrumental" and config.inference.get("normalize", False):
+            if normalize and not (instr == "instrumental" and args.extract_instrumental):
                 estimates = denormalize_audio(estimates, norm_params)
 
             codec = "flac" if args.flac_file else "wav"
@@ -148,6 +166,7 @@ def run_folder(
                 instr=instr,
                 start_time=int(start_time),
                 file_name=file_name,
+                source_name=os.path.basename(path),
                 dir_name=dir_name,
                 model_type=args.model_type,
                 model=os.path.splitext(
@@ -157,18 +176,32 @@ def run_folder(
 
             # Create output directory
             output_dir: str = os.path.join(args.store_dir, *dirnames)
-            os.makedirs(output_dir, exist_ok=True)
-
             output_path: str = os.path.join(output_dir, f"{fname}.{codec}")
+            resolved = Path(output_path).resolve()
+            if not resolved.is_relative_to(output_root):
+                raise ValueError(f'Output path escapes store_dir: {output_path}')
+            if resolved in input_paths or resolved in claimed_paths:
+                raise ValueError(f'Conflicting output path: {output_path}; choose a unique filename_template')
+            claimed_paths.add(resolved)
+            os.makedirs(output_dir, exist_ok=True)
             sf.write(output_path, estimates.T, sr, subtype=subtype)
             written_files.append(output_path)
 
             # Draw and save spectrogram if enabled
             if args.draw_spectro > 0:
                 output_img_path = os.path.join(output_dir, f"{fname}.jpg")
+                resolved_img = Path(output_img_path).resolve()
+                if (not resolved_img.is_relative_to(output_root)
+                        or resolved_img in claimed_paths or resolved_img in input_paths):
+                    raise ValueError(f'Conflicting spectrogram path: {output_img_path}')
+                claimed_paths.add(resolved_img)
                 draw_spectrogram(estimates.T, sr, args.draw_spectro, output_img_path)
                 print("Wrote file:", output_img_path)
 
+    if not written_files:
+        raise RuntimeError("No audio files were successfully processed")
+    if failed_files:
+        print(f"Warning: {failed_files} input file(s) could not be processed")
     print(f"Elapsed time: {time.time() - start_time:.2f} seconds.")
     return written_files
 
@@ -191,7 +224,9 @@ def proc_folder(dict_args):
         device = "cpu"
     elif torch.cuda.is_available():
         print('CUDA is available, use --force_cpu to disable it.')
-        device = f'cuda:{args.device_ids[0]}' if isinstance(args.device_ids, list) else f'cuda:{args.device_ids}'
+        if any(i >= torch.cuda.device_count() for i in args.device_ids):
+            raise ValueError('CUDA device ID out of range')
+        device = f'cuda:{args.device_ids[0]}'
     elif torch.backends.mps.is_available():
         device = "mps"
 
@@ -201,16 +236,14 @@ def proc_folder(dict_args):
     torch.backends.cudnn.benchmark = True
 
     model, config = get_model_from_config(args.model_type, args.config_path)
-    if 'model_type' in config.training:
-        args.model_type = config.training.model_type
-    if args.start_check_point:
-        checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
-        load_start_checkpoint(model, checkpoint)
+    checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
+    load_start_checkpoint(model, checkpoint)
+    del checkpoint
 
     print("Instruments: {}".format(config.training.instruments))
 
     # in case multiple CUDA GPUs are used and --device_ids arg is passed
-    if torch.device(device).type == 'cuda' and isinstance(args.device_ids, list) and len(args.device_ids) > 1:
+    if torch.device(device).type == 'cuda' and len(args.device_ids) > 1:
         model = nn.DataParallel(model, device_ids=args.device_ids)
 
     model = model.to(device)

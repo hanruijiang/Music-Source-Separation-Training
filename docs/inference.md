@@ -35,6 +35,10 @@ vocal-separate \
 
 支持 `--force_cpu`、`--use_tta`、`--bigshifts`、
 `--flac_file`、`--pcm_type`、`--draw_spectro` 和 `--compile`。
+默认输出保留输入的相对目录（`{dir_name}/{file_name}/{instr}`），
+同一次运行中若输出路径冲突会报错；可用 `--filename_template` 指定不同模板。
+若同一目录有同名不同扩展名的输入，可使用 `{dir_name}/{source_name}/{instr}`（`source_name` 包含扩展名）。
+重复运行仍可覆盖此前的结果。输入目录无可处理音频时会报错。
 
 ## Python API
 

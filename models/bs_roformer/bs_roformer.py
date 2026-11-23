@@ -9,8 +9,6 @@ from models.bs_roformer.attend import Attend
 
 from typing import Tuple, Optional, Callable
 
-from rotary_embedding_torch import RotaryEmbedding
-
 from einops import rearrange, pack, unpack
 
 # helper functions
@@ -239,7 +237,6 @@ class MaskEstimator(Module):
             mlp_expansion_factor=4
     ):
         super().__init__()
-        self.dim_inputs = dim_inputs
         self.to_freqs = ModuleList([])
         dim_hidden = dim * mlp_expansion_factor
 
@@ -312,7 +309,6 @@ class BSRoformer(Module):
 
         self.stereo = stereo
         self.audio_channels = 2 if stereo else 1
-        self.num_stems = num_stems
 
         self.layers = ModuleList([])
 
@@ -338,7 +334,9 @@ class BSRoformer(Module):
             time_rotary_embed = None
             freq_rotary_embed = None
         else:
-            time_rotary_embed = RotaryEmbedding(dim = dim_head)
+            from rotary_embedding_torch import RotaryEmbedding
+
+            time_rotary_embed = RotaryEmbedding(dim=dim_head)
             freq_rotary_embed = RotaryEmbedding(dim = dim_head)
             time_pope_embed = freq_pope_embed = None
 

@@ -69,7 +69,6 @@ def get_decoder(config, c):
 class Segm_Models_Net(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.config = config
 
         act = get_act(act_type=config.model.act)
 

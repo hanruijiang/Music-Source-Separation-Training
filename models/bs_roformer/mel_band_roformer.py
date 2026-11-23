@@ -9,8 +9,6 @@ from models.bs_roformer.attend import Attend
 
 from typing import Tuple, Optional, Callable
 
-from rotary_embedding_torch import RotaryEmbedding
-
 from einops import rearrange, pack, unpack, reduce, repeat
 
 from librosa import filters
@@ -226,7 +224,6 @@ class MaskEstimator(Module):
             mlp_expansion_factor=4
     ):
         super().__init__()
-        self.dim_inputs = dim_inputs
         self.to_freqs = ModuleList([])
         dim_hidden = dim * mlp_expansion_factor
 
@@ -287,7 +284,6 @@ class MelBandRoformer(Module):
 
         self.stereo = stereo
         self.audio_channels = 2 if stereo else 1
-        self.num_stems = num_stems
         self.match_input_audio_length = match_input_audio_length
 
         self.layers = ModuleList([])
@@ -301,7 +297,9 @@ class MelBandRoformer(Module):
             flash_attn=flash_attn,
         )
 
-        time_rotary_embed = RotaryEmbedding(dim = dim_head)
+        from rotary_embedding_torch import RotaryEmbedding
+
+        time_rotary_embed = RotaryEmbedding(dim=dim_head)
         freq_rotary_embed = RotaryEmbedding(dim = dim_head)
 
         for _ in range(depth):
@@ -365,12 +363,10 @@ class MelBandRoformer(Module):
             freq_indices = rearrange(freq_indices, 'f s -> (f s)')
 
         self.register_buffer('freq_indices', freq_indices, persistent=False)
-        self.register_buffer('freqs_per_band', freqs_per_band, persistent=False)
 
         num_freqs_per_band = reduce(freqs_per_band, 'b f -> b', 'sum')
         num_bands_per_freq = reduce(freqs_per_band, 'b f -> f', 'sum')
 
-        self.register_buffer('num_freqs_per_band', num_freqs_per_band, persistent=False)
         self.register_buffer('num_bands_per_freq', num_bands_per_freq, persistent=False)
 
         # band split and mask estimator

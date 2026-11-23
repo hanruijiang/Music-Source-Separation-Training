@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 from typing import Dict, Tuple
 
 import soundfile as sf
@@ -49,7 +50,7 @@ def parse_args_inference(dict_args: Dict | None = None) -> argparse.Namespace:
     parser.add_argument('--flac_file', action='store_true')
     parser.add_argument('--pcm_type', choices=['PCM_16', 'PCM_24', 'FLOAT'], default='FLOAT')
     parser.add_argument('--draw_spectro', type=float, default=0)
-    parser.add_argument('--filename_template', type=str, default='{file_name}/{instr}')
+    parser.add_argument('--filename_template', type=str, default='{dir_name}/{file_name}/{instr}')
     args = parser.parse_args([] if dict_args is not None else None)
     if dict_args is not None:
         extra = set(dict_args) - set(vars(args))
@@ -63,8 +64,21 @@ def parse_args_inference(dict_args: Dict | None = None) -> argparse.Namespace:
             if dict_args is None:
                 parser.error(f'--{field} is required')
             raise ValueError(f'Missing inference option: {field}')
-    if args.bigshifts < 1:
-        raise ValueError('--bigshifts must be at least 1')
+    if type(args.bigshifts) is not int or args.bigshifts < 1:
+        raise ValueError('--bigshifts must be a positive integer')
+    if not isinstance(args.draw_spectro, (int, float)) or not math.isfinite(args.draw_spectro) or args.draw_spectro < 0:
+        raise ValueError('--draw_spectro must be finite and nonnegative')
+    if type(args.device_ids) is int:
+        args.device_ids = [args.device_ids]
+    if (not isinstance(args.device_ids, (list, tuple)) or not args.device_ids
+            or any(type(i) is not int or i < 0 for i in args.device_ids)
+            or len(set(args.device_ids)) != len(args.device_ids)):
+        raise ValueError('--device_ids must contain distinct nonnegative integers')
+    args.device_ids = list(args.device_ids)
+    if args.pcm_type not in ('PCM_16', 'PCM_24', 'FLOAT'):
+        raise ValueError('Unsupported PCM type')
+    if not isinstance(args.filename_template, str) or not args.filename_template.strip():
+        raise ValueError('--filename_template must be a nonempty string')
     codec = 'flac' if args.flac_file else 'wav'
     if args.pcm_type not in sf.available_subtypes(codec):
         args.pcm_type = sf.default_subtype(codec)
@@ -77,12 +91,38 @@ def load_config(config_path: str) -> ConfigDict:
         return ConfigDict(yaml.load(f, Loader=yaml.FullLoader))
 
 
+def validate_inference_config(config) -> None:
+    """Reject invalid parameters before constructing a potentially large model."""
+    chunk_size = config.inference.get('chunk_size', config.audio.get('chunk_size'))
+    overlap = config.inference.get('num_overlap')
+    batch_size = config.inference.get('batch_size')
+    if type(chunk_size) is not int or chunk_size <= 0:
+        raise ValueError('chunk_size must be a positive integer')
+    if type(overlap) is not int or not 1 <= overlap <= chunk_size:
+        raise ValueError('num_overlap must be an integer between 1 and chunk_size')
+    if type(batch_size) is not int or batch_size <= 0:
+        raise ValueError('batch_size must be a positive integer')
+    if type(config.audio.get('sample_rate', 44100)) is not int or config.audio.get('sample_rate', 44100) <= 0:
+        raise ValueError('sample_rate must be a positive integer')
+    channels = config.audio.get('num_channels', 2)
+    if type(channels) is not int or channels not in (1, 2):
+        raise ValueError('num_channels must be 1 or 2')
+    if 'stereo' in config.model and channels != (2 if config.model.stereo else 1):
+        raise ValueError('audio.num_channels does not match model.stereo')
+    target = config.training.get('target_instrument')
+    expected_stems = 1 if target else len(config.training.instruments)
+    if 'num_stems' in config.model and config.model.num_stems != expected_stems:
+        raise ValueError('model.num_stems does not match the configured output stems')
+
+
 def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module, ConfigDict]:
     config = load_config(config_path)
     validate_vocal_config(config)
-    model_type = config.training.get('model_type', model_type)
+    validate_inference_config(config)
     if model_type not in VOCAL_MODEL_TYPES:
         raise ValueError(f'Unsupported vocal model architecture: {model_type}')
+    if model_type in ("mdx23c", "segm_models") and config.audio.get("num_channels", 2) != 2:
+        raise ValueError("MDX23C and Segm Models require stereo audio")
     if model_type == "mdx23c":
         from models.mdx23c_tfc_tdf_v3 import TFC_TDF_net
         model = TFC_TDF_net(config)
@@ -93,6 +133,8 @@ def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module,
         from models.bs_roformer import BSRoformer
         if model_type == "bs_polarformer" and not config.model.get("use_pope", False):
             raise ValueError("BS PolarFormer requires model.use_pope: true")
+        if model_type == "bs_roformer" and config.model.get("use_pope", False):
+            raise ValueError("Select bs_polarformer for model.use_pope: true")
         model = BSRoformer(**dict(config.model))
     elif model_type == "mel_band_roformer":
         from models.bs_roformer import MelBandRoformer

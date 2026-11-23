@@ -10,7 +10,7 @@ from ml_collections import ConfigDict
 from tqdm.auto import tqdm
 
 
-def compile_model(model: torch.nn.Module, inplace: bool = False) -> torch.nn.Module:
+def compile_model(model: torch.nn.Module) -> torch.nn.Module:
     """
     Use torch.compile for faster inference (fuses elementwise ops: norms, rotary, gates, casts).
 
@@ -18,7 +18,6 @@ def compile_model(model: torch.nn.Module, inplace: bool = False) -> torch.nn.Mod
     all transformer blocks share one compiled graph, so compilation takes seconds instead of minutes
     (whole-model compile is only ~4% faster but needs ~1.5 min of tracing on every run).
     Shapes are static: demix pads every batch to `inference.batch_size`, so there are no recompilations.
-    inplace=True compiles other models in place too (state_dict keys stay the same, for checkpoint compatibility).
     Don't use it with DataParallel: replicas share the compiled function bound to the original module,
     so they would silently run the weights of the GPU 0 copy.
     """
@@ -29,15 +28,8 @@ def compile_model(model: torch.nn.Module, inplace: bool = False) -> torch.nn.Mod
         print(f"torch.compile: CC='{cc}' not found, ignore it for triton")
         os.environ.pop("CC")
 
-    # persistent on-disk cache of compiled graphs and triton kernels (separate entries for each GPU arch),
-    # so only the first run compiles from scratch. Can be overridden by setting env vars before the run.
-    # Some imports already fill TORCHINDUCTOR_CACHE_DIR with torch default (temp dir), so replace the default too
-    from torch._inductor.runtime.cache_dir_utils import default_cache_dir
-    if os.environ.get("TORCHINDUCTOR_CACHE_DIR") in (None, default_cache_dir()):
-        code_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        os.environ["TORCHINDUCTOR_CACHE_DIR"] = code_root + '/.torch_compile_cache'
+    # Let PyTorch choose its writable cache directory; respect user overrides.
     os.environ.setdefault("TORCHINDUCTOR_FX_GRAPH_CACHE", "1")
-    print(f"torch.compile cache dir: {os.environ['TORCHINDUCTOR_CACHE_DIR']}")
 
     if all(hasattr(model, name) for name in ("layers", "band_split", "mask_estimators")):
         print("Use torch.compile for model submodules (first batch will be slower due to compilation)")
@@ -51,15 +43,11 @@ def compile_model(model: torch.nn.Module, inplace: bool = False) -> torch.nn.Mod
         return model
 
     print("Use torch.compile for model (first batch will be slow due to compilation)")
-    if inplace:
-        model.compile(dynamic=False)
-        model.compiled_submodules = True
-        return model
     return torch.compile(model, dynamic=False)
 
 
 def is_compiled_model(model: torch.nn.Module) -> bool:
-    model = getattr(model, "module", model)  # DDP / DataParallel wrapper
+    model = getattr(model, "module", model)  # DataParallel wrapper
     return hasattr(model, "_orig_mod") or getattr(model, "compiled_submodules", False)
 
 
@@ -141,15 +129,21 @@ def demix(
     else:
         chunk_size = config.audio.chunk_size
     num_overlap = config.inference.num_overlap
-    fade_size = chunk_size // 10
+    if type(chunk_size) is not int or chunk_size <= 0:
+        raise ValueError('chunk_size must be a positive integer')
+    if type(num_overlap) is not int or not 1 <= num_overlap <= chunk_size:
+        raise ValueError('num_overlap must be an integer between 1 and chunk_size')
     step = chunk_size // num_overlap
     border = chunk_size - step
+    fade_size = min(chunk_size // 10, border)
     length_init = mix.shape[-1]
     windowing_array = _getWindowingArray(chunk_size, fade_size).to(acc_device)
     if length_init > 2 * border and border > 0:
         mix = nn.functional.pad(mix, (border, border), mode="reflect")
 
     batch_size = config.inference.batch_size
+    if type(batch_size) is not int or batch_size <= 0:
+        raise ValueError('batch_size must be a positive integer')
     pad_batch = is_compiled_model(model)
 
     use_amp = getattr(config.training, 'use_amp', True)
@@ -195,6 +189,9 @@ def demix(
                     x = model(arr).to(acc_device, torch.float32)
                     if x.ndim == 3:
                         x = x.unsqueeze(1)
+                    expected = (arr.shape[0], num_instruments, mix.shape[0], chunk_size)
+                    if tuple(x.shape) != expected:
+                        raise RuntimeError(f'Model output shape {tuple(x.shape)} does not match {expected}')
 
                     for j, (start, seg_len) in enumerate(batch_locations):
                         first = start == 0
@@ -327,8 +324,9 @@ def _getWindowingArray(window_size: int, fade_size: int) -> torch.Tensor:
     fadeout = torch.linspace(1, 0, fade_size)
 
     window = torch.ones(window_size)
-    window[-fade_size:] = fadeout
-    window[:fade_size] = fadein
+    if fade_size:
+        window[-fade_size:] = fadeout
+        window[:fade_size] = fadein
     return window
 
 
@@ -358,7 +356,7 @@ def strip_compile_prefix(state_dict: dict) -> dict:
     """
     Remove the `_orig_mod.` parts that torch.compile (not in place) adds to state_dict keys,
     e.g. "blocks.0._orig_mod.time_block.norm1.scale" -> "blocks.0.time_block.norm1.scale".
-    Without it such checkpoints load silently without these weights in train mode and fail in valid mode.
+    This preserves compatibility with compiled inference checkpoints.
     """
     if not any('_orig_mod.' in k for k in state_dict):
         return state_dict

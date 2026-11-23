@@ -124,7 +124,6 @@ class TFC_TDF(nn.Module):
 class TFC_TDF_net(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.config = config
 
         norm = get_norm(norm_type=config.model.norm)
         act = get_act(act_type=config.model.act)
