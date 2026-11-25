@@ -1,8 +1,7 @@
-# Vocal separation — only five selected pretrained models
+# Vocal separation
 
 这是 [hanruijiang/Music-Source-Separation-Training](https://github.com/hanruijiang/Music-Source-Separation-Training)
-的精简 **人声推理专用** 仓库。仅保留下面指定的 5 个版本（4 种底层架构）。
-删除了训练、验证、微调/LoRA、GUI、其它模型家族及其它预设。
+提供以下五个预训练人声分离模型（四种底层架构）的推理接口。
 
 | 模型版本 | `--model_type` | 配置 | 权重 |
 |---|---|---|---|
@@ -13,7 +12,7 @@
 | BS PolarFormer (PoPE) | `bs_polarformer` | [YAML](configs/model_bs_polarformer_float16.yaml) | [Checkpoint](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.20/model_bs_polarformer_float16.ckpt) |
 
 **BS PolarFormer** 通过 `use_pope: true` 复用 `BSRoformer` 架构，并启用
-PoPE（Polar Positional Embeddings），不另建模型实现。
+PoPE（Polar Positional Embeddings）。
 `vocals` 是人声，`other` 是伴奏。部分模型仅直接输出人声，
 可用 `--extract_instrumental` 从混音中减去人声获得伴奏。
 
@@ -30,9 +29,7 @@ python -m pip install -e ".[bs_polarformer]"
 ```
 
 `bs_polarformer` extra 自动包含 `PoPE-pytorch`，其它模型不会安装它。
-PolarFormer 不需要 `rotary-embedding-torch`。
 使用 `--draw_spectro` 时额外安装 `.[spectrogram]`。
-Segm Models 实例化时不会下载不必要的 ImageNet 编码器权重。
 
 ## CLI
 
@@ -69,10 +66,10 @@ print(paths)
 ```python
 from utils.metrics import score_tracks
 
-# 默认仅计算 SDR（dB），兼容已有调用。
+# 计算 SDR（dB）。
 scores = score_tracks(reference, estimate)
 
-# 按需计算四项指标，reference/estimate 均为已对齐的 [channels, samples]。
+# 计算四项指标。
 scores = score_tracks(
     reference, estimate,
     metrics=("sdr", "si_sdr", "bleedless", "fullness"),
@@ -82,14 +79,10 @@ scores = score_tracks(
 
 SDR、SI-SDR 仅依赖 NumPy；Bleedless、Fullness 需要 PyTorch、Librosa
 及与 PyTorch 版本和 CPU/CUDA 构建匹配的 Torchaudio，可安装 `.[metrics]`。
-四项指标复用 main 提交 `1523206` 的计算口径，默认在 CPU 上评分，
-不加载模型、不重采样、不裁剪。sample_rate 必须是实际采样率。
-评分可在推理计时结束后单独执行。
+输入为形状相同的非空 `[channels, samples]` 波形，采样率、幅度尺度一致，
+且所有样本均为有限数值。默认使用 CPU；频谱评分可通过 `device="cuda"` 执行。
+`sample_rate` 为音轨的实际采样率。评分独立于推理计时。
 
 仅加载可信的完整 PyTorch checkpoint；加载恶意 pickle 权重具有执行代码风险。
 
-仓库内部文档与配置链接指向本 fork；上方的部分 checkpoint
-仍从 [原项目 Releases](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases) 下载。
-`hanruijiang` fork 当前没有镜像这些 Release 资源，因此不要将下载地址机械替换为 fork。
-原作者署名和上游项目链接也予以保留。
-更多细节见 [推理指南](docs/inference.md)、[模型与权重](docs/pretrained_models.md)。
+模型权重来源见上方表格。更多细节见 [推理指南](docs/inference.md)、[模型与权重](docs/pretrained_models.md)。

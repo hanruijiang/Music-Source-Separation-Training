@@ -1,11 +1,7 @@
 # 五个预训练人声模型的推理指南
 
 项目仓库：[hanruijiang/Music-Source-Separation-Training](https://github.com/hanruijiang/Music-Source-Separation-Training)。
-本仓库中的 YAML 和说明使用相对路径；部分 checkpoint 的下载地址保留在
-上游 Release，因为本 fork 尚未发布对应的权重文件。
-
-仅保留命令行 `python inference.py` / `vocal-separate` 和 Python
-API `inference.separate_folder`，不包含训练或 GUI。
+推理接口包括命令行 `python inference.py` / `vocal-separate` 和 Python API `inference.separate_folder`。
 
 | 模型 | `--model_type` | 配置 |
 |---|---|---|
@@ -54,6 +50,5 @@ written = separate_folder(
 )
 ```
 
-本地 YAML 仅保留推理必需的音频、模型、输出音轨、AMP 和推理参数。
-请勿随意修改 `model` 参数，以免预训练权重不兼容。
-只使用可信来源的完整 checkpoint；尚需进行真实音频和权重的端到端测试。
+YAML 配置包含音频、模型、输出音轨、AMP 和推理参数。
+使用与配置匹配的预训练权重，并从可信来源获取 checkpoint。

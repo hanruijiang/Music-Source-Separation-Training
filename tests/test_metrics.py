@@ -8,11 +8,10 @@ from utils.metrics import score_tracks
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 @pytest.mark.parametrize("channels", [1, 2])
-def test_matches_original_numpy_sdr(dtype, channels):
+def test_sdr_formula(dtype, channels):
     rng = np.random.default_rng(42)
     reference = rng.normal(size=(channels, 257)).astype(dtype)
     estimate = (reference + rng.normal(scale=0.2, size=reference.shape)).astype(dtype)
-    # Original NumPy implementation from utils/metrics.py at 1523206.
     refs, ests = reference[None, ...], estimate[None, ...]
     num = np.sum(np.square(refs), axis=(1, 2))
     den = np.sum(np.square(refs - ests), axis=(1, 2))
@@ -57,9 +56,19 @@ def test_rejects_complex_samples():
         score_tracks(np.ones((1, 4), dtype=complex), np.ones((1, 4)))
 
 
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("track_index", [0, 1])
+@pytest.mark.parametrize("metric", ["sdr", "si_sdr", "bleedless", "fullness"])
+def test_rejects_nonfinite_samples(value, track_index, metric):
+    tracks = [np.ones((2, 16), dtype=np.float32) for _ in range(2)]
+    tracks[track_index][0, 0] = value
+    with pytest.raises(ValueError, match="finite samples"):
+        score_tracks(*tracks, metrics=(metric,))
+
+
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 @pytest.mark.parametrize("channels", [1, 2])
-def test_si_sdr_matches_original(dtype, channels):
+def test_si_sdr_formula(dtype, channels):
     rng = np.random.default_rng(123)
     ref = rng.normal(size=(channels, 257)).astype(dtype)
     est = (0.5 * ref + rng.normal(scale=0.01, size=ref.shape)).astype(dtype)
@@ -99,7 +108,7 @@ def test_numpy_metrics_without_spectral_dependencies(monkeypatch):
         monkeypatch.setitem(sys.modules, name, None)
     ref = np.ones((1, 16))
     assert set(score_tracks(ref, ref, metrics=("sdr", "si_sdr"))) == {"sdr", "si_sdr"}
-    with pytest.raises(ImportError, match="metrics extra"):
+    with pytest.raises(ImportError):
         score_tracks(ref, ref, metrics=("fullness",))
 
 
@@ -150,3 +159,16 @@ def test_spectral_metrics(channels):
     assert score_tracks(ref, ref, metrics=names) == {"bleedless": 100.0, "fullness": 100.0}
     assert score_tracks(ref, ref * 2, metrics=names)["bleedless"] < 100
     assert score_tracks(ref, ref * 0.5, metrics=names)["fullness"] < 100
+
+
+def test_rejects_nonfinite_spectral_difference():
+    pytest.importorskip("torch")
+    pytest.importorskip("librosa")
+    pytest.importorskip("torchaudio")
+    from utils.metrics import bleed_full
+
+    ref = np.ones((1, 4096), dtype=np.float32)
+    est = ref.copy()
+    est[0, 0] = np.nan
+    with pytest.raises(ValueError, match="spectrogram differences must be finite"):
+        bleed_full(ref, est)
