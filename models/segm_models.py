@@ -50,147 +50,25 @@ class STFT:
 
 
 def get_act(act_type):
-    if act_type == 'gelu':
-        return nn.GELU()
-    elif act_type == 'relu':
-        return nn.ReLU()
-    elif act_type[:3] == 'elu':
-        alpha = float(act_type.replace('elu', ''))
-        return nn.ELU(alpha)
-    else:
-        raise Exception
+    if act_type != 'gelu':
+        raise ValueError('Only GELU is supported')
+    return nn.GELU()
 
 
 def get_decoder(config, c):
-    decoder = None
-    decoder_options = dict()
-    if config.model.decoder_type == 'unet':
-        try:
-            decoder_options = dict(config.decoder_unet)
-        except:
-            pass
-        decoder = smp.Unet(
-            encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
-            in_channels=c,
-            classes=c,
-            **decoder_options,
-        )
-    elif config.model.decoder_type == 'fpn':
-        try:
-            decoder_options = dict(config.decoder_fpn)
-        except:
-            pass
-        decoder = smp.FPN(
-            encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
-            in_channels=c,
-            classes=c,
-            **decoder_options,
-        )
-    elif config.model.decoder_type == 'unet++':
-        try:
-            decoder_options = dict(config.decoder_unet_plus_plus)
-        except:
-            pass
-        decoder = smp.UnetPlusPlus(
-            encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
-            in_channels=c,
-            classes=c,
-            **decoder_options,
-        )
-    elif config.model.decoder_type == 'manet':
-        try:
-            decoder_options = dict(config.decoder_manet)
-        except:
-            pass
-        decoder = smp.MAnet(
-            encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
-            in_channels=c,
-            classes=c,
-            **decoder_options,
-        )
-    elif config.model.decoder_type == 'linknet':
-        try:
-            decoder_options = dict(config.decoder_linknet)
-        except:
-            pass
-        decoder = smp.Linknet(
-            encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
-            in_channels=c,
-            classes=c,
-            **decoder_options,
-        )
-    elif config.model.decoder_type == 'pspnet':
-        try:
-            decoder_options = dict(config.decoder_pspnet)
-        except:
-            pass
-        decoder = smp.PSPNet(
-            encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
-            in_channels=c,
-            classes=c,
-            **decoder_options,
-        )
-    elif config.model.decoder_type == 'pspnet':
-        try:
-            decoder_options = dict(config.decoder_pspnet)
-        except:
-            pass
-        decoder = smp.PSPNet(
-            encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
-            in_channels=c,
-            classes=c,
-            **decoder_options,
-        )
-    elif config.model.decoder_type == 'pan':
-        try:
-            decoder_options = dict(config.decoder_pan)
-        except:
-            pass
-        decoder = smp.PAN(
-            encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
-            in_channels=c,
-            classes=c,
-            **decoder_options,
-        )
-    elif config.model.decoder_type == 'deeplabv3':
-        try:
-            decoder_options = dict(config.decoder_deeplabv3)
-        except:
-            pass
-        decoder = smp.DeepLabV3(
-            encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
-            in_channels=c,
-            classes=c,
-            **decoder_options,
-        )
-    elif config.model.decoder_type == 'deeplabv3plus':
-        try:
-            decoder_options = dict(config.decoder_deeplabv3plus)
-        except:
-            pass
-        decoder = smp.DeepLabV3Plus(
-            encoder_name=config.model.encoder_name,
-            encoder_weights="imagenet",
-            in_channels=c,
-            classes=c,
-            **decoder_options,
-        )
-    return decoder
+    if config.model.decoder_type != 'unet':
+        raise ValueError('Only Unet is supported')
+    return smp.Unet(
+        encoder_name=config.model.encoder_name,
+        encoder_weights=None,
+        in_channels=c,
+        classes=c,
+    )
 
 
 class Segm_Models_Net(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.config = config
 
         act = get_act(act_type=config.model.act)
 
@@ -199,7 +77,6 @@ class Segm_Models_Net(nn.Module):
 
         dim_c = self.num_subbands * config.audio.num_channels * 2
         c = config.model.num_channels
-        f = config.audio.dim_f // self.num_subbands
 
         self.first_conv = nn.Conv2d(dim_c, c, 1, 1, 0, bias=False)
 

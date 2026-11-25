@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from functools import partial
 from utils.model_utils import prefer_target_instrument
 
 class STFT:
@@ -44,30 +43,15 @@ class STFT:
 
 
 def get_norm(norm_type):
-    def norm(c, norm_type):
-        if norm_type == 'BatchNorm':
-            return nn.BatchNorm2d(c)
-        elif norm_type == 'InstanceNorm':
-            return nn.InstanceNorm2d(c, affine=True)
-        elif 'GroupNorm' in norm_type:
-            g = int(norm_type.replace('GroupNorm', ''))
-            return nn.GroupNorm(num_groups=g, num_channels=c)
-        else:
-            return nn.Identity()
-
-    return partial(norm, norm_type=norm_type)
+    if norm_type != 'InstanceNorm':
+        raise ValueError('Only InstanceNorm is supported')
+    return lambda c: nn.InstanceNorm2d(c, affine=True)
 
 
 def get_act(act_type):
-    if act_type == 'gelu':
-        return nn.GELU()
-    elif act_type == 'relu':
-        return nn.ReLU()
-    elif act_type[:3] == 'elu':
-        alpha = float(act_type.replace('elu', ''))
-        return nn.ELU(alpha)
-    else:
-        raise Exception
+    if act_type != 'gelu':
+        raise ValueError('Only GELU is supported')
+    return nn.GELU()
 
 
 class Upscale(nn.Module):
@@ -140,7 +124,6 @@ class TFC_TDF(nn.Module):
 class TFC_TDF_net(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.config = config
 
         norm = get_norm(norm_type=config.model.norm)
         act = get_act(act_type=config.model.act)

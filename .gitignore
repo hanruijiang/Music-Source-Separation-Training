@@ -73,4 +73,3 @@ Scripts/
 *.code-workspace
 
 results/
-wandb/

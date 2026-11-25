@@ -3,27 +3,21 @@ __author__ = 'Roman Solovyev (ZFTurbo): https://github.com/ZFTurbo/'
 
 import time
 import librosa
-import sys
 import os
 import glob
+from pathlib import Path
 import torch
 import soundfile as sf
 import numpy as np
 from tqdm.auto import tqdm
 import torch.nn as nn
 
-# Using the embedded version of Python can also correctly import the utils module.
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
-
 from utils.audio_utils import normalize_audio, denormalize_audio, draw_spectrogram
 from utils.settings import get_model_from_config, parse_args_inference
 from utils.model_utils import bigshifts_wrapper
 from utils.model_utils import prefer_target_instrument, apply_tta, load_start_checkpoint, compile_model
 
-import warnings
 
-warnings.filterwarnings("ignore")
 
 
 def run_folder(
@@ -32,7 +26,7 @@ def run_folder(
     config: dict,
     device: "torch.device",
     verbose: bool = False
-) -> None:
+) -> list[str]:
     """
     Process a folder of audio files for source separation.
 
@@ -52,13 +46,28 @@ def run_folder(
 
     start_time = time.time()
     model.eval()
+    written_files = []
+    claimed_paths = set()
+    failed_files = 0
 
-    # Recursively collect all files from input directory
+    input_root = Path(args.input_folder).resolve()
+    output_root = Path(args.store_dir).resolve()
+    if not input_root.is_dir():
+        raise ValueError(f'Input folder does not exist: {args.input_folder}')
+    if input_root == output_root:
+        raise ValueError('Input and output folders must be different')
+
+    # Recursively collect files, excluding previous results inside the input tree.
     mixture_paths = sorted(
         glob.glob(os.path.join(args.input_folder, "**/*.*"), recursive=True)
     )
-    mixture_paths = [p for p in mixture_paths if os.path.isfile(p)]
+    mixture_paths = [p for p in mixture_paths if os.path.isfile(p)
+                     and not (output_root.is_relative_to(input_root)
+                              and Path(p).resolve().is_relative_to(output_root))]
+    if not mixture_paths:
+        raise ValueError(f'No input files found: {args.input_folder}')
 
+    input_paths = {Path(path).resolve() for path in mixture_paths}
     sample_rate: int = getattr(config.audio, "sample_rate", 44100)
 
     print(f"Total files found: {len(mixture_paths)}. Using sample rate: {sample_rate}")
@@ -71,16 +80,13 @@ def run_folder(
         mixture_paths = tqdm(mixture_paths, desc="Total progress")
 
     # Determine whether to use detailed progress bar
-    if args.disable_detailed_pbar:
-        detailed_pbar = False
-    else:
-        detailed_pbar = True
+    detailed_pbar = not args.disable_detailed_pbar
 
     for path in mixture_paths:
         # Get relative path from input folder
         relative_path: str = os.path.relpath(path, args.input_folder)
         # Extract directory and file name
-        dir_name: str = os.path.dirname(relative_path)
+        dir_name: str = os.path.dirname(relative_path) or '.'
         file_name: str = os.path.splitext(os.path.basename(path))[0]
 
         try:
@@ -88,22 +94,28 @@ def run_folder(
         except Exception as e:
             print(f"Cannot read track: {format(path)}")
             print(f"Error message: {str(e)}")
+            failed_files += 1
             continue
 
         # Convert mono audio to expected channel format if needed
         if len(mix.shape) == 1:
             mix = np.expand_dims(mix, axis=0)
-            if "num_channels" in config.audio:
-                if config.audio["num_channels"] == 2:
-                    print("Convert mono track to stereo...")
-                    mix = np.concatenate([mix, mix], axis=0)
+            if config.audio.get('num_channels', 2) == 2:
+                print('Convert mono track to stereo...')
+                mix = np.concatenate([mix, mix], axis=0)
+
+        expected_channels = config.audio.get('num_channels', 2)
+        if mix.ndim != 2 or mix.shape[0] != expected_channels or mix.shape[-1] == 0:
+            print(f'Skip unsupported or empty audio: {path}')
+            failed_files += 1
+            continue
 
         mix_orig = mix.copy()
 
         # Normalize input audio if enabled
-        if "normalize" in config.inference:
-            if config.inference["normalize"] is True:
-                mix, norm_params = normalize_audio(mix)
+        normalize = config.inference.get('normalize', False)
+        if normalize:
+            mix, norm_params = normalize_audio(mix)
 
         # Perform source separation
         waveforms_orig = bigshifts_wrapper(
@@ -111,7 +123,6 @@ def run_folder(
             model,
             mix,
             device,
-            model_type=args.model_type,
             pbar=detailed_pbar,
             bigshifts=args.bigshifts
         )
@@ -124,15 +135,17 @@ def run_folder(
                 mix,
                 waveforms_orig,
                 device,
-                args.model_type,
                 bigshifts=args.bigshifts,
                 pbar=detailed_pbar
             )
 
         # Extract instrumental track if requested
         if args.extract_instrumental:
-            instr = "vocals" if "vocals" in instruments else instruments[0]
-            waveforms_orig["instrumental"] = mix_orig - waveforms_orig[instr]
+            instr = "vocals"
+            vocals_estimate = waveforms_orig[instr]
+            if normalize:
+                vocals_estimate = denormalize_audio(vocals_estimate, norm_params)
+            waveforms_orig["instrumental"] = mix_orig - vocals_estimate
             if "instrumental" not in instruments:
                 instruments.append("instrumental")
 
@@ -140,15 +153,10 @@ def run_folder(
             estimates = waveforms_orig[instr]
 
             # Denormalize output audio if normalization was applied
-            if "normalize" in config.inference:
-                if config.inference["normalize"] is True:
-                    estimates = denormalize_audio(estimates, norm_params)
+            if normalize and not (instr == "instrumental" and args.extract_instrumental):
+                estimates = denormalize_audio(estimates, norm_params)
 
-            peak: float = float(np.abs(estimates).max())
-            if peak <= 1.0 and args.pcm_type != 'FLOAT':
-                codec = "flac"
-            else:
-                codec = "wav"
+            codec = "flac" if args.flac_file else "wav"
 
             subtype = args.pcm_type
 
@@ -158,6 +166,7 @@ def run_folder(
                 instr=instr,
                 start_time=int(start_time),
                 file_name=file_name,
+                source_name=os.path.basename(path),
                 dir_name=dir_name,
                 model_type=args.model_type,
                 model=os.path.splitext(
@@ -167,18 +176,34 @@ def run_folder(
 
             # Create output directory
             output_dir: str = os.path.join(args.store_dir, *dirnames)
-            os.makedirs(output_dir, exist_ok=True)
-
             output_path: str = os.path.join(output_dir, f"{fname}.{codec}")
+            resolved = Path(output_path).resolve()
+            if not resolved.is_relative_to(output_root):
+                raise ValueError(f'Output path escapes store_dir: {output_path}')
+            if resolved in input_paths or resolved in claimed_paths:
+                raise ValueError(f'Conflicting output path: {output_path}; choose a unique filename_template')
+            claimed_paths.add(resolved)
+            os.makedirs(output_dir, exist_ok=True)
             sf.write(output_path, estimates.T, sr, subtype=subtype)
+            written_files.append(output_path)
 
             # Draw and save spectrogram if enabled
             if args.draw_spectro > 0:
                 output_img_path = os.path.join(output_dir, f"{fname}.jpg")
+                resolved_img = Path(output_img_path).resolve()
+                if (not resolved_img.is_relative_to(output_root)
+                        or resolved_img in claimed_paths or resolved_img in input_paths):
+                    raise ValueError(f'Conflicting spectrogram path: {output_img_path}')
+                claimed_paths.add(resolved_img)
                 draw_spectrogram(estimates.T, sr, args.draw_spectro, output_img_path)
                 print("Wrote file:", output_img_path)
 
+    if not written_files:
+        raise RuntimeError("No audio files were successfully processed")
+    if failed_files:
+        print(f"Warning: {failed_files} input file(s) could not be processed")
     print(f"Elapsed time: {time.time() - start_time:.2f} seconds.")
+    return written_files
 
 def format_filename(template, **kwargs):
     '''
@@ -199,7 +224,9 @@ def proc_folder(dict_args):
         device = "cpu"
     elif torch.cuda.is_available():
         print('CUDA is available, use --force_cpu to disable it.')
-        device = f'cuda:{args.device_ids[0]}' if isinstance(args.device_ids, list) else f'cuda:{args.device_ids}'
+        if any(i >= torch.cuda.device_count() for i in args.device_ids):
+            raise ValueError('CUDA device ID out of range')
+        device = f'cuda:{args.device_ids[0]}'
     elif torch.backends.mps.is_available():
         device = "mps"
 
@@ -209,16 +236,14 @@ def proc_folder(dict_args):
     torch.backends.cudnn.benchmark = True
 
     model, config = get_model_from_config(args.model_type, args.config_path)
-    if 'model_type' in config.training:
-        args.model_type = config.training.model_type
-    if args.start_check_point:
-        checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
-        load_start_checkpoint(args, model, checkpoint, type_='inference')
+    checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
+    load_start_checkpoint(model, checkpoint)
+    del checkpoint
 
     print("Instruments: {}".format(config.training.instruments))
 
     # in case multiple CUDA GPUs are used and --device_ids arg is passed
-    if isinstance(args.device_ids, list) and len(args.device_ids) > 1 and not args.force_cpu:
+    if torch.device(device).type == 'cuda' and len(args.device_ids) > 1:
         model = nn.DataParallel(model, device_ids=args.device_ids)
 
     model = model.to(device)
@@ -231,8 +256,28 @@ def proc_folder(dict_args):
 
     print("Model load time: {:.2f} sec".format(time.time() - model_load_start_time))
 
-    run_folder(model, args, config, device, verbose=True)
+    return run_folder(model, args, config, device, verbose=True)
+
+
+def separate_folder(*, model_type: str, config_path: str,
+                    checkpoint_path: str, input_folder: str,
+                    output_folder: str, **options) -> list[str]:
+    """Run vocal separation from Python and return written audio paths.
+
+    Example: separate_folder(model_type='bs_roformer',
+        config_path='configs/viperx/model_bs_roformer_ep_317_sdr_12.9755.yaml',
+        checkpoint_path='weights.ckpt', input_folder='audio', output_folder='out')
+    """
+    params = dict(model_type=model_type, config_path=str(config_path),
+                  start_check_point=str(checkpoint_path),
+                  input_folder=str(input_folder), store_dir=str(output_folder))
+    params.update(options)
+    return proc_folder(params)
+
+
+def main() -> None:
+    proc_folder(None)
 
 
 if __name__ == "__main__":
-    proc_folder(None)
+    main()
