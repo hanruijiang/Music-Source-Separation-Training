@@ -64,6 +64,28 @@ paths = separate_folder(
 print(paths)
 ```
 
+### 独立评分 API
+
+```python
+from utils.metrics import score_tracks
+
+# 默认仅计算 SDR（dB），兼容已有调用。
+scores = score_tracks(reference, estimate)
+
+# 按需计算四项指标，reference/estimate 均为已对齐的 [channels, samples]。
+scores = score_tracks(
+    reference, estimate,
+    metrics=("sdr", "si_sdr", "bleedless", "fullness"),
+    sample_rate=44100,
+)
+```
+
+SDR、SI-SDR 仅依赖 NumPy；Bleedless、Fullness 需要 PyTorch、Librosa
+及与 PyTorch 版本和 CPU/CUDA 构建匹配的 Torchaudio，可安装 `.[metrics]`。
+四项指标复用 main 提交 `1523206` 的计算口径，默认在 CPU 上评分，
+不加载模型、不重采样、不裁剪。sample_rate 必须是实际采样率。
+评分可在推理计时结束后单独执行。
+
 仅加载可信的完整 PyTorch checkpoint；加载恶意 pickle 权重具有执行代码风险。
 
 仓库内部文档与配置链接指向本 fork；上方的部分 checkpoint

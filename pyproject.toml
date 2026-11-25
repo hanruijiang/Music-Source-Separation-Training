@@ -27,6 +27,7 @@ Upstream = "https://github.com/ZFTurbo/Music-Source-Separation-Training"
 [project.optional-dependencies]
 test = ["pytest", "tomli; python_version < '3.11'"]
 spectrogram = ["matplotlib"]
+metrics = ["torchaudio>=2.6.0"]
 mdx23c = []
 segm_models = ["segmentation-models-pytorch", "timm"]
 bs_roformer = ["einops", "rotary-embedding-torch"]

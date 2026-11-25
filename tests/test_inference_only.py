@@ -66,7 +66,8 @@ def test_polarformer_is_bs_roformer_with_pope():
 def test_only_required_model_extras():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
     extras = set(project["project"]["optional-dependencies"])
-    assert extras == {*MODEL_CONFIGS, "spectrogram", "test"}
+    assert extras == {*MODEL_CONFIGS, "spectrogram", "metrics", "test"}
+    assert project["project"]["optional-dependencies"]["metrics"] == ["torchaudio>=2.6.0"]
     assert "PoPE-pytorch" in project["project"]["optional-dependencies"]["bs_polarformer"]
     assert "PoPE-pytorch" not in project["project"]["optional-dependencies"]["bs_roformer"]
 
