@@ -83,6 +83,8 @@ class Attention(Module):
 
         self.rotary_embed = rotary_embed
         self.pope_embed = pope_embed
+        self._pope_dropout = dropout
+        self._pope_inference_forward = None
         if pope_embed is not None:
             from PoPE_pytorch import flash_attn_with_pope
             self._pope_attention = flash_attn_with_pope
@@ -101,6 +103,59 @@ class Attention(Module):
             nn.Dropout(dropout)
         )
 
+    def enable_pope_inference(self):
+        """Opt into the verified PoPE launcher; never patch the dependency."""
+        if self.pope_embed is None or self._pope_dropout != 0.:
+            return False
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            # Private launcher ABI/layout is verified for this release only.
+            # Unknown versions retain the public API without changing the pin.
+            if version('PoPE-pytorch') != '0.2.1':
+                return False
+            from PoPE_pytorch.attention import TRITON_AVAILABLE
+            from PoPE_pytorch.triton_pope_flash_attn import flash_attn_forward
+        except (ImportError, PackageNotFoundError):
+            return False
+        if not TRITON_AVAILABLE or not callable(flash_attn_forward):
+            return False
+        self._pope_inference_forward = flash_attn_forward
+        return True
+
+    def _forward_pope(self, q, k, v, pos_emb):
+        launcher = self._pope_inference_forward
+        # This call site is self-attention only: no mask, mixed positions,
+        # causal flag or attention dropout is passed to the public API.
+        if (launcher is not None and not self.training
+                and not torch.is_grad_enabled() and self._pope_dropout == 0.
+                and q.is_cuda and q.ndim == 4 and q.shape == k.shape == v.shape
+                and all(q.shape) and q.shape[-1] in (32, 48, 64, 128, 256)
+                and q.dtype in (torch.float16, torch.bfloat16, torch.float32)
+                and all(t.device == q.device and t.dtype == q.dtype
+                        and t.layout == torch.strided and t.stride(-1) == 1
+                        for t in (q, k, v))):
+            freqs, bias = pos_emb
+            # Standard 1-D PoPE, with the same positional tensors as upstream.
+            if (freqs.ndim == 2 and freqs.shape[0] == q.shape[2]
+                    and 0 < freqs.shape[-1] <= q.shape[-1]
+                    and bias.shape == (q.shape[1], freqs.shape[-1])
+                    and all(t.device == q.device and t.layout == torch.strided
+                            and t.stride(-1) == 1 and t.dtype in
+                            (torch.float16, torch.bfloat16, torch.float32)
+                            for t in (freqs, bias))):
+                # Public API takes BHND; upstream launcher takes BNHD.
+                # transpose is a view, and the launcher reads actual strides.
+                out, _lse = launcher(
+                    q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),
+                    freqs=freqs, pope_bias=bias, mask=None, causal=False,
+                    softmax_scale=self.scale, dropout=0., drop_seed=0,
+                    pos_mask=None,
+                )
+                return out.transpose(1, 2)
+        return self._pope_attention(q, k, v, pos_emb=pos_emb,
+                                    softmax_scale=self.scale)
+
     def forward(self, x):
         x = self.norm(x)
 
@@ -113,11 +168,7 @@ class Attention(Module):
         q, k, v = rearrange(qkv, 'b n (qkv h d) -> qkv b h n d', qkv=3, h=self.heads)
 
         if exists(self.pope_embed):
-            out = self._pope_attention(
-                q, k, v,
-                pos_emb=self.pope_embed(q.shape[-2]),
-                softmax_scale=self.scale
-            )
+            out = self._forward_pope(q, k, v, self.pope_embed(q.shape[-2]))
         elif exists(self.rotary_embed):
             q = self.rotary_embed.rotate_queries_or_keys(q)
             k = self.rotary_embed.rotate_queries_or_keys(k)

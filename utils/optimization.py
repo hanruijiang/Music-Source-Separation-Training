@@ -198,12 +198,21 @@ def optimize_model(model, model_type, *, mode='safe'):
             from models.bs_roformer.bs_roformer import Attention, BandSplit, MaskEstimator
 
         count = 0
+        pope_count = 0
         for module in list(model.modules()):
-            if type(module) is Attention and not hasattr(module, 'to_qkv_gate'):
+            if type(module) is not Attention:
+                continue
+            if model_type == 'bs_polarformer':
+                # Preserve separate projections and avoid the fused QKV copy.
+                pope_count += int(module.enable_pope_inference())
+            elif not hasattr(module, 'to_qkv_gate'):
                 _fuse_qkv_gate(module)
                 count += 1
         if count:
             report.append(f'QKV+Gate projections: {count}')
+        if model_type == 'bs_polarformer':
+            report.append(f'PoPE strided forward enabled: {pope_count}' if pope_count
+                          else 'PoPE strided forward unavailable; using public API')
         if type(model.band_split) is BandSplit:
             model.band_split = PackedBandSplit(model.band_split).eval()
             report.append(f'BandSplit packed groups: {len(model.band_split.groups)}')

@@ -60,8 +60,13 @@ YAML 配置包含音频、模型、输出音轨、AMP 和推理参数。
 再 eval、转换模型、移动设备，最后按需 `--compile`。优化后的内存模型
 不作为新的 checkpoint 格式保存。
 
-- 三个 Roformer：QKV + Gate 投影合并、按频带形状分组的 BandSplit /
-  MaskEstimator 批量 GEMM（每组最多四个频带）、默认 Hann window 缓存。
+- BS Roformer / Mel Band Roformer：QKV + Gate 投影合并。
+- BS PolarFormer：保留独立 QKV / Gate 投影；在 eval、无梯度、CUDA、
+  无掩码、非因果、零 dropout 且末维 stride 为 1 的标准自注意力中，
+  使用 PoPE-pytorch 0.2.1 已核对的 Triton forward launcher，跳过 Q/K/V
+  布局复制。其他版本、无 Triton 或不满足条件时仍走原 PoPE API。
+- 三个 Roformer：按频带形状分组的 BandSplit / MaskEstimator 批量 GEMM
+  （每组最多四个频带）、默认 Hann window 缓存。
   保留原始 F.normalize、Tanh、GLU 和频带顺序。
 - Segm Models：仅融合真实 Sequential forward 中确认相邻的标准 Conv2d +
   BatchNorm2d；其他第三方结构不猜测融合。
