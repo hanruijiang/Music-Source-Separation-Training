@@ -45,6 +45,9 @@ python inference.py \
 
 安装后可用 `vocal-separate` 代替 `python inference.py`。
 
+可选推理前模型优化：`--optimization safe`（默认关闭），可与独立的
+`--compile` 结合使用。详情及限制见[推理指南](docs/inference.md#可选推理前模型优化)。
+
 ## Python API
 
 ```python

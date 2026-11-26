@@ -242,11 +242,21 @@ def proc_folder(dict_args):
 
     print("Instruments: {}".format(config.training.instruments))
 
-    # in case multiple CUDA GPUs are used and --device_ids arg is passed
-    if torch.device(device).type == 'cuda' and len(args.device_ids) > 1:
-        model = nn.DataParallel(model, device_ids=args.device_ids)
+    model.eval()
+    if args.optimization != 'off':
+        from utils.optimization import optimize_model
+        model, report = optimize_model(model, args.model_type, mode=args.optimization)
+        print('Model optimization: ' + ('; '.join(report) or 'no applicable transforms'))
 
     model = model.to(device)
+    multi_gpu = torch.device(device).type == 'cuda' and len(args.device_ids) > 1
+    if args.optimization != 'off':
+        from utils.optimization import prepare_device
+        for item in prepare_device(model, device, args.optimization, multi_gpu):
+            print('Model optimization: ' + item)
+
+    if multi_gpu:
+        model = nn.DataParallel(model, device_ids=args.device_ids)
 
     if args.compile:
         if isinstance(model, nn.DataParallel) or device in ("cpu", "mps"):

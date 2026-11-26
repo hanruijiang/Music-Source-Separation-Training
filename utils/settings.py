@@ -43,6 +43,8 @@ def parse_args_inference(dict_args: Dict | None = None) -> argparse.Namespace:
     parser.add_argument('--device_ids', nargs='+', type=int, default=[0], help='CUDA devices')
     parser.add_argument('--force_cpu', action='store_true')
     parser.add_argument('--compile', action='store_true')
+    parser.add_argument('--optimization', choices=('off', 'safe', 'advanced'), default='off',
+                        help='Opt-in inference model optimization; advanced also tries CUDA channels-last')
     parser.add_argument('--use_tta', action='store_true')
     parser.add_argument('--bigshifts', type=int, default=1)
     parser.add_argument('--extract_instrumental', action='store_true')
@@ -57,6 +59,8 @@ def parse_args_inference(dict_args: Dict | None = None) -> argparse.Namespace:
         if extra:
             raise ValueError(f'Unsupported inference options: {sorted(extra)}')
         vars(args).update(dict_args)
+    if args.optimization not in ('off', 'safe', 'advanced'):
+        raise ValueError('Unsupported optimization mode')
     if args.model_type not in VOCAL_MODEL_TYPES:
         raise ValueError(f'Unsupported vocal model architecture: {args.model_type}')
     for field in ('config_path', 'start_check_point', 'input_folder', 'store_dir'):

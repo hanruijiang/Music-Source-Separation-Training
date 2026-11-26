@@ -52,3 +52,26 @@ written = separate_folder(
 
 YAML 配置包含音频、模型、输出音轨、AMP 和推理参数。
 使用与配置匹配的预训练权重，并从可信来源获取 checkpoint。
+
+## 可选推理前模型优化
+
+使用 `--optimization safe`（Python API: `optimization="safe"`）启用实验性
+等价优化。默认 `off`，便于与原始推理比较。先严格加载原始 checkpoint，
+再 eval、转换模型、移动设备，最后按需 `--compile`。优化后的内存模型
+不作为新的 checkpoint 格式保存。
+
+- 三个 Roformer：QKV + Gate 投影合并、按频带形状分组的 BandSplit /
+  MaskEstimator 批量 GEMM（每组最多四个频带）、默认 Hann window 缓存。
+  保留原始 F.normalize、Tanh、GLU 和频带顺序。
+- Segm Models：仅融合真实 Sequential forward 中确认相邻的标准 Conv2d +
+  BatchNorm2d；其他第三方结构不猜测融合。
+- MDX23C / Segm Models：单设备 STFT window 缓存。
+- 普通 Dropout 替换为 Identity。动态 InstanceNorm、RMSNorm 和非线性残差保留。
+- `advanced` 在上述基础上额外尝试单 CUDA GPU 卷积模型 channels-last 权重布局。
+
+`--compile` 仍独立控制。自定义归一化 kernel、PoPE/RoPE 缓存、
+Linear-BN 等未确认安全的转换暂不启用。数学等价不保证浮点逐位一致，
+实际性能和峰值显存取决于 GPU、AMP、批大小和输入长度；尚未完成五个
+预训练模型的 GPU 性能及音频质量验证，故优化保持 opt-in。若不兼容或
+速度下降，使用 `--optimization off` 回退。请勿将优化后的 state_dict
+当作原始 checkpoint 加载。

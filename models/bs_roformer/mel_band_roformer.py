@@ -99,7 +99,13 @@ class Attention(Module):
     def forward(self, x):
         x = self.norm(x)
 
-        q, k, v = rearrange(self.to_qkv(x), 'b n (qkv h d) -> qkv b h n d', qkv=3, h=self.heads)
+        if hasattr(self, 'to_qkv_gate'):
+            qkv, gates = self.to_qkv_gate(x).split((self.to_qkv_gate.out_features - self.heads, self.heads), dim=-1)
+            # Preserve the original dense QKV layout for attention backends.
+            qkv = qkv.contiguous()
+        else:
+            qkv, gates = self.to_qkv(x), None
+        q, k, v = rearrange(qkv, 'b n (qkv h d) -> qkv b h n d', qkv=3, h=self.heads)
 
         if exists(self.rotary_embed):
             q = self.rotary_embed.rotate_queries_or_keys(q)
@@ -108,7 +114,8 @@ class Attention(Module):
         else:
             out = self.attend(q, k, v)
 
-        gates = self.to_gates(x)
+        if gates is None:
+            gates = self.to_gates(x)
         out = out * rearrange(gates, 'b n h -> b h n 1').sigmoid()
 
         out = rearrange(out, 'b h n d -> b n (h d)')
@@ -426,7 +433,9 @@ class MelBandRoformer(Module):
 
         raw_audio, batch_audio_channel_packed_shape = pack_one(raw_audio, '* t')
 
-        stft_window = self.stft_window_fn(device=device)
+        stft_window = getattr(self, '_inference_stft_window', None)
+        if stft_window is None or stft_window.device != device:
+            stft_window = self.stft_window_fn(device=device)
 
         stft_repr = torch.stft(raw_audio, **self.stft_kwargs, window=stft_window, return_complex=True)
         stft_repr = torch.view_as_real(stft_repr)
